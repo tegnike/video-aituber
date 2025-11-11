@@ -1,36 +1,93 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Movie Tuber - AI配信チャットアプリ
 
-## Getting Started
+AIとのチャットをリアルタイムで配信するWebアプリケーションです。
 
-First, run the development server:
+## 機能
+
+- ユーザーがチャットを入力すると、OpenAIが回答を生成
+- 生成された回答をもとに動画生成APIを呼び出し
+- 背景にループ動画を再生
+- 動画生成が完了したら、ループ動画の区切りで生成動画に切り替え
+- 生成動画が終了したら、ループ動画に戻る
+
+## セットアップ
+
+### 1. 依存関係のインストール
+
+```bash
+npm install
+```
+
+### 2. 環境変数の設定
+
+`.env.local`ファイルを作成し、以下の環境変数を設定してください：
+
+```env
+OPENAI_API_KEY=your_openai_api_key_here
+VIDEO_GENERATION_API_URL=http://localhost:3001/api/generate-video
+VOICEVOX_ENDPOINT=http://localhost:10101
+VOICE_ID=633572448
+```
+
+### 3. ループ動画の配置
+
+`public/videos/`ディレクトリを作成し、ループ動画を`loop-video.mp4`として配置してください：
+
+```bash
+mkdir -p public/videos
+# ループ動画を loop-video.mp4 として配置
+```
+
+### 4. 開発サーバーの起動
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+ブラウザで [http://localhost:3000](http://localhost:3000) を開いてください。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## プロジェクト構造
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+movie-tuber/
+├── app/
+│   ├── api/
+│   │   ├── chat/
+│   │   │   └── route.ts          # チャットAPI（OpenAI統合）
+│   │   ├── generate-video-callback/
+│   │   │   └── route.ts          # 動画生成コールバックAPI
+│   │   └── video/
+│   │       └── route.ts          # 動画ファイル配信API
+│   ├── layout.tsx                # ルートレイアウト
+│   └── page.tsx                  # メインページ
+├── components/
+│   ├── VideoPlayer.tsx           # 動画プレーヤーコンポーネント
+│   ├── ChatInput.tsx             # チャット入力コンポーネント
+│   └── ChatHistory.tsx           # チャット履歴コンポーネント
+├── lib/
+│   └── openai.ts                 # OpenAIクライアント設定
+└── public/
+    └── videos/
+        └── loop-video.mp4        # ループ動画（ユーザーが配置）
+```
 
-## Learn More
+## 使用方法
 
-To learn more about Next.js, take a look at the following resources:
+1. アプリを起動すると、背景にループ動画が再生されます
+2. 下部の入力欄からメッセージを入力して送信
+3. OpenAIが回答を生成し、その回答をもとに動画生成APIが呼び出されます
+4. 動画生成が完了したら、ループ動画の次の区切りで生成動画に切り替わります
+5. 生成動画が終了したら、ループ動画に戻ります
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 技術スタック
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **フレームワーク**: Next.js 14 (App Router)
+- **スタイリング**: Tailwind CSS
+- **状態管理**: React Hooks
+- **外部API**: OpenAI API、動画生成API
 
-## Deploy on Vercel
+## 注意事項
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- 動画生成API（`http://localhost:3001/api/generate-video`）が起動している必要があります
+- VoiceVox（`http://localhost:10101`）が起動している必要があります
+- ループ動画ファイル（`public/videos/loop-video.mp4`）を配置する必要があります
