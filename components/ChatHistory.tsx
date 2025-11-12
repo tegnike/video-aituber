@@ -15,8 +15,8 @@ export default function ChatHistory({
   isLoading,
 }: ChatHistoryProps) {
   return (
-    <div className="fixed top-0 left-0 right-0 z-40 max-h-[calc(100vh-120px)] overflow-y-auto p-4">
-      <div className="max-w-4xl mx-auto space-y-4">
+    <div className="fixed top-0 right-0 w-1/3 z-40 max-h-[calc(100vh-120px)] overflow-y-auto p-4">
+      <div className="space-y-4">
         {messages.map((message, index) => (
           <div
             key={index}
