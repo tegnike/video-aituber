@@ -1,6 +1,10 @@
 import { openai } from '@/lib/openai';
 import { NextRequest, NextResponse } from 'next/server';
 
+type VideoRequest =
+  | { action: 'speak'; params: { text: string; emotion: string } }
+  | { action: 'idle'; params: { durationMs: number } };
+
 export async function POST(request: NextRequest) {
   try {
     const { message, history } = await request.json();
@@ -36,7 +40,7 @@ export async function POST(request: NextRequest) {
 - requestsは発話と間を表現するアクション列です
 - 発話を分割して、間にidleを入れることで自然な演出ができます
 - emotionは"neutral"（通常）または"thinking"（考え中）から選択
-- idleのdurationMsは300〜2000の範囲で設定
+- idleのdurationMsは2000-3000の範囲で設定
 - 短い返答なら1つのspeakだけでもOKです`,
         },
         ...(history || []),
@@ -49,7 +53,7 @@ export async function POST(request: NextRequest) {
     });
 
     let assistantMessage = '';
-    let requests: any[] = [];
+    let requests: VideoRequest[] = [];
 
     try {
       const responseData = JSON.parse(
@@ -63,6 +67,19 @@ export async function POST(request: NextRequest) {
         requests = [
           { action: 'speak', params: { text: assistantMessage, emotion: 'neutral' } },
         ];
+      }
+
+      // requests配列からすべてのspeakアクションのテキストを結合してメッセージに含める
+      const speakTexts = requests
+        .filter((req): req is { action: 'speak'; params: { text: string; emotion: string } } => 
+          req.action === 'speak' && 'text' in req.params
+        )
+        .map((req) => req.params.text);
+      
+      if (speakTexts.length > 0) {
+        // speakアクションのテキストを結合してメッセージとして使用
+        // これにより、すべての発話内容（「うーん、」など）がチャット履歴に表示される
+        assistantMessage = speakTexts.join('');
       }
     } catch (error) {
       console.error('Error parsing completion response:', error);

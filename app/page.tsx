@@ -16,32 +16,37 @@ export default function Home() {
   const [generatedVideoPath, setGeneratedVideoPath] = useState<string | null>(
     null
   );
-  const [usedVideoPath, setUsedVideoPath] = useState<string | null>(null);
+  const [usedVideoPaths, setUsedVideoPaths] = useState<Set<string>>(new Set());
 
   // ループ動画のパス（デフォルトは public/videos/loop-video.mp4）
   const loopVideoPath = '/videos/loop-video.mp4';
 
+  // 動画生成状態をポーリングで確認する関数
+  const pollVideoStatus = useCallback(async () => {
+    try {
+      const response = await fetch('/api/generate-video-callback');
+      const data = await response.json();
+
+      if (
+        data.videoPath &&
+        !usedVideoPaths.has(data.videoPath) &&
+        data.videoPath !== generatedVideoPath
+      ) {
+        // 新しい動画が生成された場合（使用済みでなく、現在設定されている動画でもない）
+        setGeneratedVideoPath(data.videoPath);
+      }
+    } catch (error) {
+      console.error('Error polling video status:', error);
+    }
+  }, [usedVideoPaths, generatedVideoPath]);
+
   // 動画生成状態をポーリングで確認
   useEffect(() => {
-    const pollVideoStatus = async () => {
-      try {
-        const response = await fetch('/api/generate-video-callback');
-        const data = await response.json();
-
-        if (data.videoPath && data.videoPath !== usedVideoPath) {
-          // 新しい動画が生成された場合
-          setGeneratedVideoPath(data.videoPath);
-        }
-      } catch (error) {
-        console.error('Error polling video status:', error);
-      }
-    };
-
-    // 5秒ごとにポーリング
-    const interval = setInterval(pollVideoStatus, 5000);
+    // 1秒ごとにポーリング（間隔を短縮）
+    const interval = setInterval(pollVideoStatus, 1000);
 
     return () => clearInterval(interval);
-  }, [usedVideoPath]);
+  }, [pollVideoStatus]);
 
   const handleSendMessage = useCallback(
     async (message: string) => {
@@ -101,19 +106,34 @@ export default function Home() {
     [messages, isLoading]
   );
 
-  const handleVideoEnd = useCallback(() => {
-    // 生成動画が終了したら、使用済みとしてマーク
-    if (generatedVideoPath) {
-      setUsedVideoPath(generatedVideoPath);
-      setGeneratedVideoPath(null);
-    }
-  }, [generatedVideoPath]);
+  const handleVideoEnd = useCallback(
+    (finishedVideoPath: string | null) => {
+      if (!finishedVideoPath) {
+        return;
+      }
+
+      // 使用済み動画のセットに追加
+      setUsedVideoPaths((prev) => {
+        const newSet = new Set(prev);
+        newSet.add(finishedVideoPath);
+        return newSet;
+      });
+      // 現在の生成動画が終了した動画と一致する場合はクリア
+      setGeneratedVideoPath((current) =>
+        current === finishedVideoPath ? null : current
+      );
+
+      // 動画終了時に次の動画を即座に取得
+      pollVideoStatus();
+    },
+    [pollVideoStatus]
+  );
 
   // 動画パスの決定: 生成動画が準備できている場合はそれを使用、そうでなければループ動画
   // ただし、動画プレーヤーコンポーネント内で切り替えを処理するため、
   // ここでは生成動画のパスのみを渡す
   const videoPathToUse =
-    generatedVideoPath && generatedVideoPath !== usedVideoPath
+    generatedVideoPath && !usedVideoPaths.has(generatedVideoPath)
       ? generatedVideoPath
       : null;
 

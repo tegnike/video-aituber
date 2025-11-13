@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 interface VideoPlayerProps {
   loopVideoPath: string;
   generatedVideoPath?: string | null;
-  onVideoEnd?: () => void;
+  onVideoEnd?: (finishedVideoPath: string | null) => void;
   enableAudioOnInteraction?: boolean;
 }
 
@@ -23,9 +23,9 @@ export default function VideoPlayer({
   const [video1Opacity, setVideo1Opacity] = useState<number>(1);
   const [video2Opacity, setVideo2Opacity] = useState<number>(0);
   const [isGeneratedVideo, setIsGeneratedVideo] = useState(false);
-  const [pendingGeneratedVideo, setPendingGeneratedVideo] = useState<
-    string | null
-  >(null);
+  const [pendingGeneratedVideos, setPendingGeneratedVideos] = useState<
+    string[]
+  >([]);
   const [isAudioEnabled, setIsAudioEnabled] = useState(false);
 
   // 初期化: 両方のvideo要素をループ動画で設定
@@ -48,29 +48,59 @@ export default function VideoPlayer({
     }
   }, [isAudioEnabled]);
 
-  // 生成動画が準備できた場合、pendingに設定し、事前に読み込む
+  // 生成動画が準備できた場合、キューに追加し、最初の動画を事前に読み込む
   useEffect(() => {
-    if (!generatedVideoPath || isGeneratedVideo || pendingGeneratedVideo) {
+    const currentVideoSrc = activeVideo === 1 ? video1Src : video2Src;
+    if (
+      !generatedVideoPath ||
+      generatedVideoPath === currentVideoSrc ||
+      pendingGeneratedVideos.includes(generatedVideoPath)
+    ) {
       return;
     }
 
+    // 現在再生中の動画が生成動画の場合は、キューに追加するだけ
+    if (isGeneratedVideo && generatedVideoPath !== currentVideoSrc) {
+      // 現在の動画がまだ再生中の場合は、キューに追加するだけ
+      setTimeout(() => {
+        setPendingGeneratedVideos((prev) => [...prev, generatedVideoPath]);
+      }, 0);
+      return;
+    }
+
+    // キューが空の場合（最初の動画）は事前読み込みを行う
     // 次の動画を事前に読み込む（暗転を防ぐため）
     const nextVideoRef = activeVideo === 1 ? video2Ref : video1Ref;
+    const nextOpacitySetter =
+      activeVideo === 1 ? setVideo2Opacity : setVideo1Opacity;
     const nextVideo = nextVideoRef.current;
     if (nextVideo) {
+      // 動画要素を確実に非表示にする（DOM操作で即座に適用）
+      nextVideo.style.opacity = '0';
+      nextVideo.style.pointerEvents = 'none';
+      // 状態も非同期で更新
+      setTimeout(() => {
+        nextOpacitySetter(0);
+      }, 0);
       nextVideo.src = generatedVideoPath;
       nextVideo.muted = !isAudioEnabled;
       nextVideo.preload = 'auto';
       nextVideo.load();
     }
 
-    // 状態を更新（次のレンダリングサイクルで）
-    const timer = setTimeout(() => {
-      setPendingGeneratedVideo(generatedVideoPath);
+    // 状態を更新（非同期で設定）
+    setTimeout(() => {
+      setPendingGeneratedVideos((prev) => [...prev, generatedVideoPath]);
     }, 0);
-
-    return () => clearTimeout(timer);
-  }, [generatedVideoPath, isGeneratedVideo, pendingGeneratedVideo, activeVideo, isAudioEnabled]);
+  }, [
+    generatedVideoPath,
+    pendingGeneratedVideos,
+    activeVideo,
+    isAudioEnabled,
+    video1Src,
+    video2Src,
+    isGeneratedVideo,
+  ]);
 
   // 動画をスムーズに切り替える関数
   const switchVideo = useCallback(
@@ -87,6 +117,13 @@ export default function VideoPlayer({
       const currentVideo = currentVideoRef.current;
       if (!nextVideo || !currentVideo) return;
 
+      // 切り替え前に確実に次の動画を非表示にする
+      nextOpacitySetter(0);
+      if (nextVideo) {
+        nextVideo.style.opacity = '0';
+        nextVideo.style.pointerEvents = 'none';
+      }
+
       // 次の動画のsrcを更新
       nextSrcSetter(newSrc);
       nextVideo.muted = !isAudioEnabled;
@@ -97,7 +134,14 @@ export default function VideoPlayer({
         // HAVE_FUTURE_DATA以上（十分に読み込まれている）
         // フェードなしで即座に切り替え
         currentOpacitySetter(0);
+        if (currentVideo) {
+          currentVideo.style.opacity = '0';
+        }
         nextOpacitySetter(1);
+        if (nextVideo) {
+          nextVideo.style.opacity = '1';
+          nextVideo.style.pointerEvents = 'auto';
+        }
         currentVideo.pause();
         currentVideo.currentTime = 0;
         nextVideo.play().catch((error) => {
@@ -116,7 +160,14 @@ export default function VideoPlayer({
 
         // フェードなしで即座に切り替え
         currentOpacitySetter(0);
+        if (currentVideo) {
+          currentVideo.style.opacity = '0';
+        }
         nextOpacitySetter(1);
+        if (nextVideo) {
+          nextVideo.style.opacity = '1';
+          nextVideo.style.pointerEvents = 'auto';
+        }
         currentVideo.pause();
         currentVideo.currentTime = 0;
         nextVideo.play().catch((error) => {
@@ -150,16 +201,33 @@ export default function VideoPlayer({
     if (!video) return;
 
     const handleEnded = () => {
+      const currentSrc = activeVideo === 1 ? video1Src : video2Src;
+
       if (isGeneratedVideo) {
-        // 生成動画が終了したら、ループ動画に戻る
-        switchVideo(loopVideoPath, false);
-        setPendingGeneratedVideo(null);
-        onVideoEnd?.();
+        // 生成動画が終了したら、まずonVideoEndを呼んで使用済みとしてマーク
+        onVideoEnd?.(currentSrc || null);
+        // キューから現在の動画を削除（重複再生を防ぐ）
+        const remainingVideos = pendingGeneratedVideos.filter(
+          (path) => path !== currentSrc
+        );
+        setPendingGeneratedVideos(remainingVideos);
+        
+        // キューに次の動画がある場合は、ループ動画をスキップして次の動画に直接切り替え
+        if (remainingVideos.length > 0) {
+          const [nextVideoPath, ...restVideos] = remainingVideos;
+          setPendingGeneratedVideos(restVideos);
+          switchVideo(nextVideoPath, true);
+        } else {
+          // キューが空の場合はループ動画に戻る
+          switchVideo(loopVideoPath, false);
+        }
       } else {
-        // ループ動画が終了したら、pendingの生成動画があるかチェック
-        if (pendingGeneratedVideo) {
-          switchVideo(pendingGeneratedVideo, true);
-          setPendingGeneratedVideo(null);
+        // ループ動画が終了したら、キューから最初の動画を取得
+        if (pendingGeneratedVideos.length > 0) {
+          const [nextVideoPath, ...remainingVideos] = pendingGeneratedVideos;
+          // キューを更新してから切り替え（重複再生を防ぐ）
+          setPendingGeneratedVideos(remainingVideos);
+          switchVideo(nextVideoPath, true);
         } else {
           // 生成動画がなければ、ループ動画を再開
           video.play().catch((error) => {
@@ -177,10 +245,12 @@ export default function VideoPlayer({
   }, [
     activeVideo,
     isGeneratedVideo,
-    pendingGeneratedVideo,
+    pendingGeneratedVideos,
     loopVideoPath,
     onVideoEnd,
     switchVideo,
+    video1Src,
+    video2Src,
   ]);
 
   // ユーザーインタラクションで音声を有効にする
@@ -279,4 +349,3 @@ export default function VideoPlayer({
     </div>
   );
 }
-

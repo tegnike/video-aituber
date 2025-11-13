@@ -43,18 +43,16 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    // 最新の動画パスを取得
-    const entries = Array.from(videoQueue.entries());
-    if (entries.length === 0) {
+    // まだクライアントに渡していない最古の動画パスを取得し、キューから取り除く
+    const iterator = videoQueue.entries().next();
+    if (iterator.done) {
       return NextResponse.json({ videoPath: null });
     }
 
-    // 最新のものを取得
-    const latest = entries.reduce((latest, current) => {
-      return current[1].timestamp > latest[1].timestamp ? current : latest;
-    });
+    const [id, value] = iterator.value;
+    videoQueue.delete(id);
 
-    return NextResponse.json({ videoPath: latest[1].path });
+    return NextResponse.json({ videoPath: value.path });
   } catch (error) {
     console.error('Error getting video status:', error);
     return NextResponse.json(
@@ -63,4 +61,3 @@ export async function GET() {
     );
   }
 }
-
