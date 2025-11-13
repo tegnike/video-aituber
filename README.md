@@ -24,9 +24,7 @@ npm install
 
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
-VIDEO_GENERATION_API_URL=http://localhost:3001/api/generate-video
-VOICEVOX_ENDPOINT=http://localhost:10101
-VOICE_ID=633572448
+VIDEO_GENERATION_API_URL=http://localhost:4000/api/generate
 ```
 
 ### 3. ループ動画の配置
@@ -76,8 +74,14 @@ movie-tuber/
 1. アプリを起動すると、背景にループ動画が再生されます
 2. 下部の入力欄からメッセージを入力して送信
 3. OpenAIが回答を生成し、その回答をもとに動画生成APIが呼び出されます
-4. 動画生成が完了したら、ループ動画の次の区切りで生成動画に切り替わります
-5. 生成動画が終了したら、ループ動画に戻ります
+4. APIレスポンスでは`speak`/`idle`ごとに動画クリップがストリーミングで返却され、受信した順番に自動再生されます
+5. すべてのクリップを再生し終えると、ループ動画に戻ります
+
+## 動画生成APIとの連携
+
+- `app/api/chat/route.ts`では、OpenAIに対して「スピーチ」「アイドル」のアクション列をJSONで生成させ、動画生成APIへ`{ stream: true, requests: [...] }`という形式で送信します
+- 動画生成APIのレスポンスはNDJSONで逐次返却され、各`result`の`outputPath`を`/api/generate-video-callback`に転送してフロントエンド側の再生キューに追加します
+- フロントエンド（`app/page.tsx`）はコールバックAPIをポーリングし、受信した順番を維持したまま動画を1本ずつ再生します
 
 ## 技術スタック
 
@@ -88,6 +92,5 @@ movie-tuber/
 
 ## 注意事項
 
-- 動画生成API（`http://localhost:3001/api/generate-video`）が起動している必要があります
-- VoiceVox（`http://localhost:10101`）が起動している必要があります
+- 動画生成API（`http://localhost:4000/api/generate`）が起動している必要があります
 - ループ動画ファイル（`public/videos/loop-video.mp4`）を配置する必要があります
