@@ -12,29 +12,79 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // OpenAI APIでチャット完了を待つ
+    // OpenAI APIでチャット完了とアクション列生成を同時に行う
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
+        {
+          role: 'system',
+          content: `あなたは親しみやすく明るいAIアシスタントです。
+ユーザーと自然で楽しい会話をしながら、質問に答えたり、話を聞いたりします。
+
+回答はJSON形式で以下のように返してください：
+{
+  "message": "ユーザーへの返答メッセージ",
+  "requests": [
+    { "action": "speak", "params": { "text": "発話内容1", "emotion": "neutral" } },
+    { "action": "idle", "params": { "durationMs": 1000 } },
+    { "action": "speak", "params": { "text": "発話内容2", "emotion": "thinking" } }
+  ]
+}
+
+## ルール
+- messageは簡潔でわかりやすい返答にしてください
+- requestsは発話と間を表現するアクション列です
+- 発話を分割して、間にidleを入れることで自然な演出ができます
+- emotionは"neutral"（通常）または"thinking"（考え中）から選択
+- idleのdurationMsは300〜2000の範囲で設定
+- 短い返答なら1つのspeakだけでもOKです`,
+        },
         ...(history || []),
         {
           role: 'user',
           content: message,
         },
       ],
+      response_format: { type: 'json_object' },
     });
 
-    const assistantMessage = completion.choices[0]?.message?.content || '';
+    let assistantMessage = '';
+    let requests: any[] = [];
+
+    try {
+      const responseData = JSON.parse(
+        completion.choices[0]?.message?.content || '{}'
+      );
+      assistantMessage = responseData.message || '';
+      requests = responseData.requests || [];
+
+      // requestsが空の場合はフォールバック
+      if (requests.length === 0 && assistantMessage) {
+        requests = [
+          { action: 'speak', params: { text: assistantMessage, emotion: 'neutral' } },
+        ];
+      }
+    } catch (error) {
+      console.error('Error parsing completion response:', error);
+      assistantMessage = completion.choices[0]?.message?.content || '';
+      requests = [
+        { action: 'speak', params: { text: assistantMessage, emotion: 'neutral' } },
+      ];
+    }
 
     // 動画生成APIへのリクエスト（非同期で開始）
     const videoGenerationUrl =
       process.env.VIDEO_GENERATION_API_URL ||
       'http://localhost:4000/api/generate';
 
-    // メッセージを speak アクションに変換
-    const requests = [
-      { action: 'speak', params: { text: assistantMessage } },
-    ];
+    const requestBody = {
+      stream: true,
+      requests,
+    };
+
+    console.log('Sending request to video generation API:');
+    console.log('URL:', videoGenerationUrl);
+    console.log('Body:', JSON.stringify(requestBody, null, 2));
 
     // 動画生成を非同期で開始し、NDJSONレスポンスを処理
     fetch(videoGenerationUrl, {
@@ -42,10 +92,7 @@ export async function POST(request: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        stream: true,
-        requests,
-      }),
+      body: JSON.stringify(requestBody),
     })
       .then(async (response) => {
         if (!response.ok || !response.body) {
@@ -70,6 +117,13 @@ export async function POST(request: NextRequest) {
 
             try {
               const data = JSON.parse(line);
+
+              // doneタイプの場合、ストリーム完了
+              if (data.type === 'done') {
+                console.log(`Video generation completed: ${data.count} videos generated`);
+                break;
+              }
+
               // resultタイプの場合、コールバックAPIに送信
               if (data.type === 'result' && data.result?.outputPath) {
                 const callbackUrl = `${request.nextUrl.origin}/api/generate-video-callback`;
