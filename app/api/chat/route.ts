@@ -29,56 +29,70 @@ export async function POST(request: NextRequest) {
     // 動画生成APIへのリクエスト（非同期で開始）
     const videoGenerationUrl =
       process.env.VIDEO_GENERATION_API_URL ||
-      'http://localhost:3001/api/generate-video';
-    const voicevoxEndpoint =
-      process.env.VOICEVOX_ENDPOINT || 'http://localhost:10101';
-    const voiceId = process.env.VOICE_ID || '633572448';
+      'http://localhost:4000/api/generate';
 
-    // 動画生成を非同期で開始し、レスポンスを処理
-    // タイムアウトを5分に設定（動画生成には時間がかかる可能性があるため）
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Timeout')), 5 * 60 * 1000)
-    );
+    // メッセージを speak アクションに変換
+    const requests = [
+      { action: 'speak', params: { text: assistantMessage } },
+    ];
 
-    Promise.race([
-      fetch(videoGenerationUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: assistantMessage,
-          voicevoxEndpoint,
-          voiceId,
-        }),
+    // 動画生成を非同期で開始し、NDJSONレスポンスを処理
+    fetch(videoGenerationUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        stream: true,
+        requests,
       }),
-      timeoutPromise,
-    ] as [Promise<Response>, Promise<never>])
-      .then((response) => {
-        if (response instanceof Response) {
-          return response.json();
+    })
+      .then(async (response) => {
+        if (!response.ok || !response.body) {
+          throw new Error('Failed to fetch video generation API');
         }
-        throw new Error('Invalid response');
-      })
-      .then((data) => {
-        // 動画パスが返ってきたら、コールバックAPIに送信
-        if (data.path) {
-          const callbackUrl = `${request.nextUrl.origin}/api/generate-video-callback`;
-          fetch(callbackUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              videoPath: data.path,
-            }),
-          }).catch((error) => {
-            console.error('Error calling callback API:', error);
-          });
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        // NDJSONを1行ずつ読み取る
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+
+            try {
+              const data = JSON.parse(line);
+              // resultタイプの場合、コールバックAPIに送信
+              if (data.type === 'result' && data.result?.outputPath) {
+                const callbackUrl = `${request.nextUrl.origin}/api/generate-video-callback`;
+                fetch(callbackUrl, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    videoPath: data.result.outputPath,
+                  }),
+                }).catch((error) => {
+                  console.error('Error calling callback API:', error);
+                });
+              }
+            } catch (error) {
+              console.error('Error parsing NDJSON line:', error);
+            }
+          }
         }
       })
       .catch((error) => {
-        // タイムアウトやエラーが発生した場合でも、チャットAPIのレスポンスは返す
+        // エラーが発生した場合でも、チャットAPIのレスポンスは返す
         console.error('Error calling video generation API:', error);
       });
 
