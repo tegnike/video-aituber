@@ -1,4 +1,5 @@
 import { openai } from '@/lib/openai';
+import { setLoopVideoPath } from '@/lib/loopVideoStore';
 import { NextRequest, NextResponse } from 'next/server';
 
 type VideoRequest =
@@ -142,19 +143,40 @@ export async function POST(request: NextRequest) {
               }
 
               // resultタイプの場合、コールバックAPIに送信
-              if (data.type === 'result' && data.result?.outputPath) {
-                const callbackUrl = `${request.nextUrl.origin}/api/generate-video-callback`;
-                fetch(callbackUrl, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({
-                    videoPath: data.result.outputPath,
-                  }),
-                }).catch((error) => {
-                  console.error('Error calling callback API:', error);
-                });
+              if (data.type === 'result' && data.result) {
+                const result = data.result;
+
+                // ループ動画のパスが提供された場合は共有ストアに保存
+                if (result.action === 'loop') {
+                  const loopPath =
+                    result.params?.path ||
+                    result.params?.loopVideoPath ||
+                    result.outputPath;
+
+                  if (typeof loopPath === 'string' && loopPath.length > 0) {
+                    const loopVideoUrl = loopPath.startsWith('/api/') || loopPath.startsWith('http')
+                      ? loopPath
+                      : `/api/video?path=${encodeURIComponent(loopPath)}`;
+                    setLoopVideoPath(loopVideoUrl);
+                    console.log('Updated loop video path:', loopVideoUrl);
+                  }
+                  continue;
+                }
+
+                if (result.outputPath) {
+                  const callbackUrl = `${request.nextUrl.origin}/api/generate-video-callback`;
+                  fetch(callbackUrl, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      videoPath: result.outputPath,
+                    }),
+                  }).catch((error) => {
+                    console.error('Error calling callback API:', error);
+                  });
+                }
               }
             } catch (error) {
               console.error('Error parsing NDJSON line:', error);
@@ -179,4 +201,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

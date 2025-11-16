@@ -1,6 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  type MutableRefObject,
+  type SetStateAction,
+} from 'react';
 
 interface VideoPlayerProps {
   loopVideoPath: string;
@@ -17,6 +24,7 @@ export default function VideoPlayer({
 }: VideoPlayerProps) {
   const video1Ref = useRef<HTMLVideoElement>(null);
   const video2Ref = useRef<HTMLVideoElement>(null);
+  const previousLoopVideoPathRef = useRef(loopVideoPath);
   const [activeVideo, setActiveVideo] = useState<1 | 2>(1);
   const [video1Src, setVideo1Src] = useState<string>(loopVideoPath);
   const [video2Src, setVideo2Src] = useState<string>(loopVideoPath);
@@ -30,13 +38,59 @@ export default function VideoPlayer({
 
   // 初期化: 両方のvideo要素をループ動画で設定
   useEffect(() => {
-    if (video1Ref.current) {
-      video1Ref.current.src = loopVideoPath;
+    const previousLoopPath = previousLoopVideoPathRef.current;
+    if (previousLoopPath === loopVideoPath) {
+      return;
     }
-    if (video2Ref.current) {
-      video2Ref.current.src = loopVideoPath;
-    }
-  }, [loopVideoPath]);
+
+    const updateVideoIfUsingPrevious = (
+      videoRef: MutableRefObject<HTMLVideoElement | null>,
+      currentSrc: string,
+      setSrc: (value: SetStateAction<string>) => void,
+      shouldAutoplay: boolean
+    ) => {
+      if (currentSrc !== previousLoopPath) {
+        return;
+      }
+
+      setSrc(loopVideoPath);
+      const video = videoRef.current;
+      if (!video) {
+        return;
+      }
+
+      video.src = loopVideoPath;
+      video.load();
+      if (shouldAutoplay) {
+        video
+          .play()
+          .catch((error) => {
+            console.error('Error playing updated loop video:', error);
+          });
+      }
+    };
+
+    updateVideoIfUsingPrevious(
+      video1Ref,
+      video1Src,
+      setVideo1Src,
+      !isGeneratedVideo && activeVideo === 1
+    );
+    updateVideoIfUsingPrevious(
+      video2Ref,
+      video2Src,
+      setVideo2Src,
+      !isGeneratedVideo && activeVideo === 2
+    );
+
+    previousLoopVideoPathRef.current = loopVideoPath;
+  }, [
+    loopVideoPath,
+    video1Src,
+    video2Src,
+    isGeneratedVideo,
+    activeVideo,
+  ]);
 
   // 音声状態が変更されたときに、両方のvideo要素の音声状態を更新
   useEffect(() => {
