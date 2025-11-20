@@ -8,8 +8,7 @@ async function requestLoopVideoFromGenerator(): Promise<string | null> {
     const videoGenerationUrl =
       process.env.VIDEO_GENERATION_API_URL ||
       'http://localhost:4000/api/generate';
-    const characterId =
-      process.env.VIDEO_GENERATION_CHARACTER_ID || 'character';
+    const presetId = process.env.VIDEO_GENERATION_PRESET_ID || 'preset-1';
 
     const response = await fetch(videoGenerationUrl, {
       method: 'POST',
@@ -17,7 +16,7 @@ async function requestLoopVideoFromGenerator(): Promise<string | null> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        characterId,
+        presetId,
         stream: true,
         requests: [{ action: 'loop', params: {} }],
       }),
