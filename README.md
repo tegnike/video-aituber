@@ -25,7 +25,7 @@ npm install
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
 VIDEO_GENERATION_API_URL=http://localhost:4000/api/generate
-VIDEO_GENERATION_CHARACTER_ID=character
+VIDEO_GENERATION_PRESET_ID=character
 ```
 
 ### 3. ループ動画の配置
@@ -80,7 +80,7 @@ movie-tuber/
 
 ## 動画生成APIとの連携
 
-- `app/api/chat/route.ts`では、OpenAIに対して「スピーチ」「アイドル」のアクション列をJSONで生成させ、動画生成APIへ`{ characterId, stream: true, requests: [...] }`という形式で送信します
+- `app/api/chat/route.ts`では、OpenAIに対して「スピーチ」「アイドル」のアクション列をJSONで生成させ、動画生成APIへ`{ presetId, stream: true, requests: [...] }`という形式で送信します
 - 動画生成APIのレスポンスはNDJSONで逐次返却され、各`result`の`outputPath`を`/api/generate-video-callback`に転送してフロントエンド側の再生キューに追加します
 - フロントエンド（`app/page.tsx`）はコールバックAPIをポーリングし、受信した順番を維持したまま動画を1本ずつ再生します
 
