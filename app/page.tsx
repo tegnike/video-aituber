@@ -17,9 +17,23 @@ export default function Home() {
     null
   );
   const [usedVideoPaths, setUsedVideoPaths] = useState<Set<string>>(new Set());
+  const [loopVideoPath, setLoopVideoPath] = useState<string | null>(null);
 
-  // ループ動画のパス（デフォルトは public/videos/loop-video.mp4）
-  const loopVideoPath = '/videos/loop-video.mp4';
+  const fetchLoopVideoPath = useCallback(async () => {
+    try {
+      const response = await fetch('/api/loop-video');
+      const data = await response.json();
+
+      const nextLoopPath =
+        typeof data.loopVideoPath === 'string' && data.loopVideoPath.length > 0
+          ? data.loopVideoPath
+          : null;
+
+      setLoopVideoPath((prev) => (prev === nextLoopPath ? prev : nextLoopPath));
+    } catch (error) {
+      console.error('Error fetching loop video path:', error);
+    }
+  }, []);
 
   // 動画生成状態をポーリングで確認する関数
   const pollVideoStatus = useCallback(async () => {
@@ -37,16 +51,21 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Error polling video status:', error);
+    } finally {
+      await fetchLoopVideoPath();
     }
-  }, [usedVideoPaths, generatedVideoPath]);
+  }, [usedVideoPaths, generatedVideoPath, fetchLoopVideoPath]);
 
   // 動画生成状態をポーリングで確認
   useEffect(() => {
+    // 初回すぐにポーリングし、その後は1秒ごとに実行
+    fetchLoopVideoPath();
+    pollVideoStatus();
     // 1秒ごとにポーリング（間隔を短縮）
     const interval = setInterval(pollVideoStatus, 1000);
 
     return () => clearInterval(interval);
-  }, [pollVideoStatus]);
+  }, [pollVideoStatus, fetchLoopVideoPath]);
 
   const handleSendMessage = useCallback(
     async (message: string) => {
@@ -140,11 +159,15 @@ export default function Home() {
   return (
     <div className="relative w-full h-screen overflow-hidden">
       {/* 動画プレーヤー（背景全面） */}
-      <VideoPlayer
-        loopVideoPath={loopVideoPath}
-        generatedVideoPath={videoPathToUse}
-        onVideoEnd={handleVideoEnd}
-      />
+      {loopVideoPath ? (
+        <VideoPlayer
+          loopVideoPath={loopVideoPath}
+          generatedVideoPath={videoPathToUse}
+          onVideoEnd={handleVideoEnd}
+        />
+      ) : (
+        <div className="fixed inset-0 bg-black" aria-hidden="true" />
+      )}
 
       {/* チャット履歴 */}
       <ChatHistory messages={messages} isLoading={isLoading} />
