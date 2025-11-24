@@ -94,8 +94,10 @@ export async function POST(request: NextRequest) {
     const videoGenerationUrl =
       process.env.VIDEO_GENERATION_API_URL ||
       'http://localhost:4000/api/generate';
+    const presetId = process.env.VIDEO_GENERATION_PRESET_ID || 'character';
 
     const requestBody = {
+      presetId,
       stream: true,
       requests,
     };

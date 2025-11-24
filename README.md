@@ -25,6 +25,7 @@ npm install
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
 VIDEO_GENERATION_API_URL=http://localhost:4000/api/generate
+VIDEO_GENERATION_PRESET_ID=character
 ```
 
 ### 3. 動画生成APIの準備
