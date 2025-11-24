@@ -1,0 +1,24 @@
+{
+  "presetId": "anchor-a",
+  "actions": {
+    "loop": {
+      "params": {}
+    },
+    "speak": {
+      "params": {
+        "text": "",
+        "emotion": "neutral"
+      }
+    },
+    "idle": {
+      "params": {
+        "durationMs": 2000
+      }
+    }
+  },
+  "emotions": ["neutral", "happy"],
+  "idleDurationRange": {
+    "min": 2000,
+    "max": 3000
+  }
+}

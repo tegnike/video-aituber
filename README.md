@@ -27,27 +27,35 @@ OPENAI_API_KEY=your_openai_api_key_here
 VIDEO_GENERATION_API_URL=http://localhost:4000/api/generate
 ```
 
-### 3. 動画生成設定ファイルの編集
+### 3. 動画生成設定ファイルの作成
 
-`config/video-generation.json`でアクションやプリセットを設定できます：
+`config/example.video-generation.json` を `config/video-generation.json` にコピーし、環境に合わせて編集してください：
+
+```bash
+cp config/example.video-generation.json config/video-generation.json
+```
+
+設定項目：
 
 ```json
 {
-  "presetId": "character",
+  "presetId": "anchor-a",
   "actions": {
     "loop": { "params": {} },
     "speak": { "params": { "text": "", "emotion": "neutral" } },
     "idle": { "params": { "durationMs": 2000 } }
   },
-  "emotions": ["neutral", "thinking"],
+  "emotions": ["neutral", "happy"],
   "idleDurationRange": { "min": 2000, "max": 3000 }
 }
 ```
 
-- `presetId`: 使用するキャラクター/動画のプリセットID
+- `presetId`: 動画生成APIで定義されたプリセットID（Animation-Streamerの場合は`anchor-a`など）
 - `actions`: 利用可能なアクションとそのデフォルトパラメータ
 - `emotions`: 発話時に指定できる感情の種類
 - `idleDurationRange`: idle時間の範囲（ミリ秒）
+
+※ `config/video-generation.json` はGit管理対象外です。
 
 ### 4. 動画生成APIの準備
 
@@ -85,7 +93,8 @@ movie-tuber/
 │   ├── ChatInput.tsx             # チャット入力コンポーネント
 │   └── ChatHistory.tsx           # チャット履歴コンポーネント
 ├── config/
-│   └── video-generation.json     # 動画生成設定ファイル
+│   ├── example.video-generation.json  # 動画生成設定の例
+│   └── video-generation.json          # 動画生成設定（Git管理対象外）
 ├── lib/
 │   ├── loopVideoStore.ts         # ループ動画のパスを保持するサーバーストア
 │   ├── openai.ts                 # OpenAIクライアント設定
