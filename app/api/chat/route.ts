@@ -1,6 +1,12 @@
 import { openai } from '@/lib/openai';
 import { setLoopVideoPath } from '@/lib/loopVideoStore';
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  getPresetId,
+  getEmotions,
+  getIdleDurationRange,
+  getAvailableActions,
+} from '@/lib/videoGenerationConfig';
 
 type VideoRequest =
   | { action: 'speak'; params: { text: string; emotion: string } }
@@ -17,6 +23,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 設定ファイルから動的に値を取得
+    const emotions = getEmotions();
+    const idleRange = getIdleDurationRange();
+    const availableActions = getAvailableActions();
+
     // OpenAI APIでチャット完了とアクション列生成を同時に行う
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -30,9 +41,9 @@ export async function POST(request: NextRequest) {
 {
   "message": "ユーザーへの返答メッセージ",
   "requests": [
-    { "action": "speak", "params": { "text": "発話内容1", "emotion": "neutral" } },
-    { "action": "idle", "params": { "durationMs": 1000 } },
-    { "action": "speak", "params": { "text": "発話内容2", "emotion": "thinking" } }
+    { "action": "speak", "params": { "text": "発話内容1", "emotion": "${emotions[0] || 'neutral'}" } },
+    { "action": "idle", "params": { "durationMs": ${idleRange.min} } },
+    { "action": "speak", "params": { "text": "発話内容2", "emotion": "${emotions[1] || 'thinking'}" } }
   ]
 }
 
@@ -40,8 +51,9 @@ export async function POST(request: NextRequest) {
 - messageは簡潔でわかりやすい返答にしてください
 - requestsは発話と間を表現するアクション列です
 - 発話を分割して、間にidleを入れることで自然な演出ができます
-- emotionは"neutral"（通常）または"thinking"（考え中）から選択
-- idleのdurationMsは2000-3000の範囲で設定
+- emotionは${emotions.map(e => `"${e}"`).join('または')}から選択
+- idleのdurationMsは${idleRange.min}-${idleRange.max}の範囲で設定
+- 利用可能なアクション: ${availableActions.filter(a => a !== 'loop').join(', ')}
 - 短い返答なら1つのspeakだけでもOKです`,
         },
         ...(history || []),
@@ -94,10 +106,9 @@ export async function POST(request: NextRequest) {
     const videoGenerationUrl =
       process.env.VIDEO_GENERATION_API_URL ||
       'http://localhost:4000/api/generate';
-    const presetId = process.env.VIDEO_GENERATION_PRESET_ID || 'character';
 
     const requestBody = {
-      presetId,
+      presetId: getPresetId(),
       stream: true,
       requests,
     };

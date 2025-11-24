@@ -25,17 +25,38 @@ npm install
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
 VIDEO_GENERATION_API_URL=http://localhost:4000/api/generate
-VIDEO_GENERATION_PRESET_ID=character
 ```
 
-### 3. 動画生成APIの準備
+### 3. 動画生成設定ファイルの編集
+
+`config/video-generation.json`でアクションやプリセットを設定できます：
+
+```json
+{
+  "presetId": "character",
+  "actions": {
+    "loop": { "params": {} },
+    "speak": { "params": { "text": "", "emotion": "neutral" } },
+    "idle": { "params": { "durationMs": 2000 } }
+  },
+  "emotions": ["neutral", "thinking"],
+  "idleDurationRange": { "min": 2000, "max": 3000 }
+}
+```
+
+- `presetId`: 使用するキャラクター/動画のプリセットID
+- `actions`: 利用可能なアクションとそのデフォルトパラメータ
+- `emotions`: 発話時に指定できる感情の種類
+- `idleDurationRange`: idle時間の範囲（ミリ秒）
+
+### 4. 動画生成APIの準備
 
 - `VIDEO_GENERATION_API_URL` が指す動画生成APIサーバーを起動しておきます
 - **事前にAPIへ `loop` アクションを追加し、リクエスト `{ action: 'loop', ... }` に応じてループ動画を生成できるよう実装しておいてください**
 - APIは `requests: [{ action: 'loop', ... }]` を受け取るとループ動画を生成し、`result` の `outputPath` あるいは `params.loopVideoPath` に動画のパスを含める必要があります
 - このアプリは `/api/loop-video` 経由でループ動画のパスを取得し、以降の再生で共有します
 
-### 4. 開発サーバーの起動
+### 5. 開発サーバーの起動
 
 ```bash
 npm run dev
@@ -63,9 +84,12 @@ movie-tuber/
 │   ├── VideoPlayer.tsx           # 動画プレーヤーコンポーネント
 │   ├── ChatInput.tsx             # チャット入力コンポーネント
 │   └── ChatHistory.tsx           # チャット履歴コンポーネント
+├── config/
+│   └── video-generation.json     # 動画生成設定ファイル
 ├── lib/
 │   ├── loopVideoStore.ts         # ループ動画のパスを保持するサーバーストア
-│   └── openai.ts                 # OpenAIクライアント設定
+│   ├── openai.ts                 # OpenAIクライアント設定
+│   └── videoGenerationConfig.ts  # 動画生成設定の読み込み
 └── public/
     └── ...                       # 必要に応じて静的ファイルを配置
 ```

@@ -18,6 +18,8 @@ export default function Home() {
   );
   const [usedVideoPaths, setUsedVideoPaths] = useState<Set<string>>(new Set());
   const [loopVideoPath, setLoopVideoPath] = useState<string | null>(null);
+  const [isLoadingLoop, setIsLoadingLoop] = useState(true);
+  const [loopVideoError, setLoopVideoError] = useState(false);
 
   const fetchLoopVideoPath = useCallback(async () => {
     try {
@@ -30,8 +32,17 @@ export default function Home() {
           : null;
 
       setLoopVideoPath((prev) => (prev === nextLoopPath ? prev : nextLoopPath));
+
+      if (nextLoopPath) {
+        setLoopVideoError(false);
+      } else {
+        setLoopVideoError(true);
+      }
     } catch (error) {
       console.error('Error fetching loop video path:', error);
+      setLoopVideoError(true);
+    } finally {
+      setIsLoadingLoop(false);
     }
   }, []);
 
@@ -66,6 +77,18 @@ export default function Home() {
 
     return () => clearInterval(interval);
   }, [pollVideoStatus, fetchLoopVideoPath]);
+
+  // エラー時の自動リトライ（5秒ごと）
+  useEffect(() => {
+    if (!loopVideoError || loopVideoPath) return;
+
+    const retryInterval = setInterval(() => {
+      setIsLoadingLoop(true);
+      fetchLoopVideoPath();
+    }, 5000);
+
+    return () => clearInterval(retryInterval);
+  }, [loopVideoError, loopVideoPath, fetchLoopVideoPath]);
 
   const handleSendMessage = useCallback(
     async (message: string) => {
@@ -166,7 +189,19 @@ export default function Home() {
           onVideoEnd={handleVideoEnd}
         />
       ) : (
-        <div className="fixed inset-0 bg-black" aria-hidden="true" />
+        <div className="fixed inset-0 bg-black flex items-center justify-center">
+          {isLoadingLoop ? (
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+              <p className="text-white/70 text-sm">読み込み中...</p>
+            </div>
+          ) : loopVideoError ? (
+            <div className="flex flex-col items-center gap-4">
+              <p className="text-white/70 text-sm">動画サーバーに接続できません</p>
+              <p className="text-white/50 text-xs">再接続中...</p>
+            </div>
+          ) : null}
+        </div>
       )}
 
       {/* チャット履歴 */}

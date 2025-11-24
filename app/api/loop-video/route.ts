@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getLoopVideoPath, setLoopVideoPath } from '@/lib/loopVideoStore';
+import { getPresetId, getVideoGenerationConfig } from '@/lib/videoGenerationConfig';
 
 let loopVideoRequestPromise: Promise<string | null> | null = null;
 
@@ -8,7 +9,8 @@ async function requestLoopVideoFromGenerator(): Promise<string | null> {
     const videoGenerationUrl =
       process.env.VIDEO_GENERATION_API_URL ||
       'http://localhost:4000/api/generate';
-    const presetId = process.env.VIDEO_GENERATION_PRESET_ID || 'preset-1';
+    const config = getVideoGenerationConfig();
+    const loopAction = config.actions.loop;
 
     const response = await fetch(videoGenerationUrl, {
       method: 'POST',
@@ -16,9 +18,9 @@ async function requestLoopVideoFromGenerator(): Promise<string | null> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        presetId,
+        presetId: getPresetId(),
         stream: true,
-        requests: [{ action: 'loop', params: {} }],
+        requests: [{ action: 'loop', params: loopAction?.params || {} }],
       }),
     });
 
