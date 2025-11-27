@@ -23,12 +23,25 @@ export default function Home() {
 
   const fetchLoopVideoPath = useCallback(async () => {
     try {
-      const response = await fetch('/api/loop-video');
+      // 汎用動画生成APIにloopアクションをリクエスト
+      const response = await fetch('/api/generate-video', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requests: [{ action: 'loop', params: {} }],
+        }),
+      });
       const data = await response.json();
 
+      // レスポンスからloop動画のURLを取得
+      const loopResult = data.results?.find(
+        (r: { action: string }) => r.action === 'loop'
+      );
       const nextLoopPath =
-        typeof data.loopVideoPath === 'string' && data.loopVideoPath.length > 0
-          ? data.loopVideoPath
+        typeof loopResult?.videoUrl === 'string' && loopResult.videoUrl.length > 0
+          ? loopResult.videoUrl
           : null;
 
       setLoopVideoPath((prev) => (prev === nextLoopPath ? prev : nextLoopPath));
@@ -62,21 +75,20 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Error polling video status:', error);
-    } finally {
-      await fetchLoopVideoPath();
     }
-  }, [usedVideoPaths, generatedVideoPath, fetchLoopVideoPath]);
+  }, [usedVideoPaths, generatedVideoPath]);
+
+  // 初回のみループ動画を取得
+  useEffect(() => {
+    fetchLoopVideoPath();
+  }, [fetchLoopVideoPath]);
 
   // 動画生成状態をポーリングで確認
   useEffect(() => {
-    // 初回すぐにポーリングし、その後は1秒ごとに実行
-    fetchLoopVideoPath();
     pollVideoStatus();
-    // 1秒ごとにポーリング（間隔を短縮）
     const interval = setInterval(pollVideoStatus, 1000);
-
     return () => clearInterval(interval);
-  }, [pollVideoStatus, fetchLoopVideoPath]);
+  }, [pollVideoStatus]);
 
   // エラー時の自動リトライ（5秒ごと）
   useEffect(() => {

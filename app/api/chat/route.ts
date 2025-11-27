@@ -1,8 +1,6 @@
 import { openai } from '@/lib/openai';
-import { setLoopVideoPath } from '@/lib/loopVideoStore';
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getPresetId,
   getEmotions,
   getIdleDurationRange,
   getAvailableActions,
@@ -103,104 +101,16 @@ export async function POST(request: NextRequest) {
     }
 
     // 動画生成APIへのリクエスト（非同期で開始）
-    const videoGenerationUrl =
-      process.env.VIDEO_GENERATION_API_URL ||
-      'http://localhost:4000/api/generate';
-
-    const requestBody = {
-      presetId: getPresetId(),
-      stream: true,
-      requests,
-    };
-
-    console.log('Sending request to video generation API:');
-    console.log('URL:', videoGenerationUrl);
-    console.log('Body:', JSON.stringify(requestBody, null, 2));
-
-    // 動画生成を非同期で開始し、NDJSONレスポンスを処理
-    fetch(videoGenerationUrl, {
+    const generateVideoUrl = `${request.nextUrl.origin}/api/generate-video`;
+    fetch(generateVideoUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(requestBody),
-    })
-      .then(async (response) => {
-        if (!response.ok || !response.body) {
-          throw new Error('Failed to fetch video generation API');
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        // NDJSONを1行ずつ読み取る
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (!line.trim()) continue;
-
-            try {
-              const data = JSON.parse(line);
-
-              // doneタイプの場合、ストリーム完了
-              if (data.type === 'done') {
-                console.log(`Video generation completed: ${data.count} videos generated`);
-                break;
-              }
-
-              // resultタイプの場合、コールバックAPIに送信
-              if (data.type === 'result' && data.result) {
-                const result = data.result;
-
-                // ループ動画のパスが提供された場合は共有ストアに保存
-                if (result.action === 'loop') {
-                  const loopPath =
-                    result.params?.path ||
-                    result.params?.loopVideoPath ||
-                    result.outputPath;
-
-                  if (typeof loopPath === 'string' && loopPath.length > 0) {
-                    const loopVideoUrl = loopPath.startsWith('/api/') || loopPath.startsWith('http')
-                      ? loopPath
-                      : `/api/video?path=${encodeURIComponent(loopPath)}`;
-                    setLoopVideoPath(loopVideoUrl);
-                    console.log('Updated loop video path:', loopVideoUrl);
-                  }
-                  continue;
-                }
-
-                if (result.outputPath) {
-                  const callbackUrl = `${request.nextUrl.origin}/api/generate-video-callback`;
-                  fetch(callbackUrl, {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                      videoPath: result.outputPath,
-                    }),
-                  }).catch((error) => {
-                    console.error('Error calling callback API:', error);
-                  });
-                }
-              }
-            } catch (error) {
-              console.error('Error parsing NDJSON line:', error);
-            }
-          }
-        }
-      })
-      .catch((error) => {
-        // エラーが発生した場合でも、チャットAPIのレスポンスは返す
-        console.error('Error calling video generation API:', error);
-      });
+      body: JSON.stringify({ requests }),
+    }).catch((error) => {
+      console.error('Error calling generate-video API:', error);
+    });
 
     return NextResponse.json({
       message: assistantMessage,

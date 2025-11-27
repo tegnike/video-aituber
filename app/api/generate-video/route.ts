@@ -1,0 +1,152 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getPresetId } from '@/lib/videoGenerationConfig';
+import { setLoopVideoPath } from '@/lib/loopVideoStore';
+
+export interface VideoRequest {
+  action: string;
+  params: Record<string, unknown>;
+}
+
+export interface GenerateVideoResponse {
+  success: boolean;
+  results?: Array<{
+    action: string;
+    outputPath?: string;
+    videoUrl?: string;
+  }>;
+  error?: string;
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const { requests } = await request.json();
+
+    if (!requests || !Array.isArray(requests) || requests.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'requests array is required' },
+        { status: 400 }
+      );
+    }
+
+    const videoGenerationUrl =
+      process.env.VIDEO_GENERATION_API_URL ||
+      'http://localhost:4000/api/generate';
+
+    const requestBody = {
+      presetId: getPresetId(),
+      stream: true,
+      requests,
+    };
+
+    console.log('Sending request to video generation API:');
+    console.log('URL:', videoGenerationUrl);
+    console.log('Body:', JSON.stringify(requestBody, null, 2));
+
+    const response = await fetch(videoGenerationUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok || !response.body) {
+      throw new Error('Failed to fetch video generation API');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    const results: Array<{
+      action: string;
+      outputPath?: string;
+      videoUrl?: string;
+    }> = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+
+        try {
+          const data = JSON.parse(line);
+
+          if (data.type === 'done') {
+            console.log(`Video generation completed: ${data.count} videos generated`);
+            break;
+          }
+
+          if (data.type === 'result' && data.result) {
+            const result = data.result;
+
+            // ループ動画の場合は共有ストアに保存
+            if (result.action === 'loop') {
+              const loopPath =
+                result.params?.path ||
+                result.params?.loopVideoPath ||
+                result.outputPath;
+
+              if (typeof loopPath === 'string' && loopPath.length > 0) {
+                const loopVideoUrl =
+                  loopPath.startsWith('/api/') || loopPath.startsWith('http')
+                    ? loopPath
+                    : `/api/video?path=${encodeURIComponent(loopPath)}`;
+                setLoopVideoPath(loopVideoUrl);
+                results.push({
+                  action: 'loop',
+                  outputPath: loopPath,
+                  videoUrl: loopVideoUrl,
+                });
+              }
+              continue;
+            }
+
+            // 通常の動画の場合
+            if (result.outputPath) {
+              const videoUrl = `/api/video?path=${encodeURIComponent(result.outputPath)}`;
+
+              // コールバックAPIに送信
+              const callbackUrl = `${request.nextUrl.origin}/api/generate-video-callback`;
+              fetch(callbackUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  videoPath: result.outputPath,
+                }),
+              }).catch((error) => {
+                console.error('Error calling callback API:', error);
+              });
+
+              results.push({
+                action: result.action,
+                outputPath: result.outputPath,
+                videoUrl,
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing NDJSON line:', error);
+        }
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      results,
+    });
+  } catch (error) {
+    console.error('Error in generate-video API:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to generate video' },
+      { status: 500 }
+    );
+  }
+}
