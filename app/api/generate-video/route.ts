@@ -28,6 +28,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // staticVideoアクションを分離
+    const staticVideoRequests = requests.filter(
+      (r: VideoRequest) => r.action === 'staticVideo'
+    );
+    const serverRequests = requests.filter(
+      (r: VideoRequest) => r.action !== 'staticVideo'
+    );
+
+    // staticVideo用の結果を先に追加
+    const results: Array<{
+      action: string;
+      outputPath?: string;
+      videoUrl?: string;
+    }> = [];
+
+    for (const req of staticVideoRequests) {
+      const path = req.params.path as string;
+      if (path) {
+        const videoUrl =
+          path.startsWith('/api/') || path.startsWith('http')
+            ? path
+            : `/api/video?path=${encodeURIComponent(path)}`;
+        results.push({
+          action: 'staticVideo',
+          outputPath: path,
+          videoUrl,
+        });
+      }
+    }
+
+    // 動画生成サーバーに送るリクエストがない場合は早期リターン
+    if (serverRequests.length === 0) {
+      return NextResponse.json({
+        success: true,
+        results,
+      });
+    }
+
     const videoGenerationUrl =
       process.env.VIDEO_GENERATION_API_URL ||
       'http://localhost:4000/api/generate';
@@ -35,7 +73,7 @@ export async function POST(request: NextRequest) {
     const requestBody = {
       presetId: getPresetId(),
       stream: true,
-      requests,
+      requests: serverRequests,
     };
 
     console.log('Sending request to video generation API:');
@@ -57,11 +95,6 @@ export async function POST(request: NextRequest) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    const results: Array<{
-      action: string;
-      outputPath?: string;
-      videoUrl?: string;
-    }> = [];
 
     while (true) {
       const { done, value } = await reader.read();

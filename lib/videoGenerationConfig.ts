@@ -9,6 +9,16 @@ export interface ActionConfig {
   params: ActionParams;
 }
 
+export interface StartupRequest {
+  action: string;
+  params: Record<string, unknown>;
+}
+
+export interface StartupConfig {
+  enabled: boolean;
+  requests: StartupRequest[];
+}
+
 export interface VideoGenerationConfig {
   presetId: string;
   actions: Record<string, ActionConfig>;
@@ -17,6 +27,7 @@ export interface VideoGenerationConfig {
     min: number;
     max: number;
   };
+  startup?: StartupConfig;
 }
 
 let cachedConfig: VideoGenerationConfig | null = null;
@@ -62,4 +73,9 @@ export function getEmotions(): string[] {
 
 export function getIdleDurationRange(): { min: number; max: number } {
   return getVideoGenerationConfig().idleDurationRange;
+}
+
+export function getStartupConfig(): StartupConfig | null {
+  const config = getVideoGenerationConfig();
+  return config.startup?.enabled ? config.startup : null;
 }

@@ -12,6 +12,7 @@ import {
 interface VideoPlayerProps {
   loopVideoPath: string;
   generatedVideoPath?: string | null;
+  initialQueue?: string[];
   onVideoEnd?: (finishedVideoPath: string | null) => void;
   enableAudioOnInteraction?: boolean;
 }
@@ -19,22 +20,41 @@ interface VideoPlayerProps {
 export default function VideoPlayer({
   loopVideoPath,
   generatedVideoPath,
+  initialQueue,
   onVideoEnd,
   enableAudioOnInteraction = true,
 }: VideoPlayerProps) {
   const video1Ref = useRef<HTMLVideoElement>(null);
   const video2Ref = useRef<HTMLVideoElement>(null);
   const previousLoopVideoPathRef = useRef(loopVideoPath);
+  const processedVideoPathsRef = useRef<Set<string>>(
+    new Set(generatedVideoPath ? [generatedVideoPath, ...(initialQueue || [])] : [])
+  );
+  const hasInitialPlayStartedRef = useRef(false);
   const [activeVideo, setActiveVideo] = useState<1 | 2>(1);
-  const [video1Src, setVideo1Src] = useState<string>(loopVideoPath);
+  // 初期動画がある場合はそれを使用、なければループ動画
+  const [video1Src, setVideo1Src] = useState<string>(generatedVideoPath || loopVideoPath);
   const [video2Src, setVideo2Src] = useState<string>(loopVideoPath);
   const [video1Opacity, setVideo1Opacity] = useState<number>(1);
   const [video2Opacity, setVideo2Opacity] = useState<number>(0);
-  const [isGeneratedVideo, setIsGeneratedVideo] = useState(false);
+  const [isGeneratedVideo, setIsGeneratedVideo] = useState(!!generatedVideoPath);
   const [pendingGeneratedVideos, setPendingGeneratedVideos] = useState<
     string[]
-  >([]);
-  const [isAudioEnabled, setIsAudioEnabled] = useState(false);
+  >(initialQueue || []);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(!enableAudioOnInteraction);
+
+  // 初回マウント時に動画を明示的に再生開始
+  useEffect(() => {
+    if (hasInitialPlayStartedRef.current) return;
+    hasInitialPlayStartedRef.current = true;
+
+    const video = video1Ref.current;
+    if (video) {
+      video.play().catch((error) => {
+        console.error('Error starting initial video:', error);
+      });
+    }
+  }, []);
 
   // 初期化: 両方のvideo要素をループ動画で設定
   useEffect(() => {
@@ -105,13 +125,19 @@ export default function VideoPlayer({
   // 生成動画が準備できた場合、キューに追加し、最初の動画を事前に読み込む
   useEffect(() => {
     const currentVideoSrc = activeVideo === 1 ? video1Src : video2Src;
+
+    // 既に処理済みの動画はスキップ
     if (
       !generatedVideoPath ||
+      processedVideoPathsRef.current.has(generatedVideoPath) ||
       generatedVideoPath === currentVideoSrc ||
       pendingGeneratedVideos.includes(generatedVideoPath)
     ) {
       return;
     }
+
+    // 処理済みとしてマーク
+    processedVideoPathsRef.current.add(generatedVideoPath);
 
     // 現在再生中の動画が生成動画の場合は、キューに追加するだけ
     if (isGeneratedVideo && generatedVideoPath !== currentVideoSrc) {

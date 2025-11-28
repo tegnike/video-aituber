@@ -1,5 +1,12 @@
 {
   "presetId": "character",
+  "startup": {
+    "enabled": true,
+    "requests": [
+      { "action": "start", "params": {} },
+      { "action": "speak", "params": { "text": "こんにちは！今日も一日頑張りましょう！", "emotion": "neutral" } }
+    ]
+  },
   "actions": {
     "loop": {
       "params": {}
