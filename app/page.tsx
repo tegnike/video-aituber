@@ -10,6 +10,12 @@ interface Message {
   content: string;
 }
 
+// 画面モード: standby=待機画面(loop), room=初期画面(room)
+type ScreenMode = 'standby' | 'room';
+
+// コントロール動画の種類
+type ControlVideoType = 'start' | 'end' | null;
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -17,56 +23,132 @@ export default function Home() {
     null
   );
   const [usedVideoPaths, setUsedVideoPaths] = useState<Set<string>>(new Set());
-  const [loopVideoPath, setLoopVideoPath] = useState<string | null>(null);
-  const [isLoadingLoop, setIsLoadingLoop] = useState(true);
-  const [loopVideoError, setLoopVideoError] = useState(false);
 
-  // スタートボタン管理
+  // 背景動画（loop or room）
+  const [backgroundVideoPath, setBackgroundVideoPath] = useState<string | null>(null);
+  const [isLoadingBackground, setIsLoadingBackground] = useState(true);
+  const [backgroundVideoError, setBackgroundVideoError] = useState(false);
+
+  // 画面モード選択
   const [hasStarted, setHasStarted] = useState(false);
+  const [screenMode, setScreenMode] = useState<ScreenMode | null>(null);
 
-  // スタートアップフェーズ管理
-  const [isStartupPhase, setIsStartupPhase] = useState(true);
-  const [startupVideoPaths, setStartupVideoPaths] = useState<string[]>([]);
-  const [currentStartupIndex, setCurrentStartupIndex] = useState(0);
-  const [isLoadingStartup, setIsLoadingStartup] = useState(true);
+  // コントロールボタンからの動画再生管理
+  const [controlVideoPath, setControlVideoPath] = useState<string | null>(null);
+  const [controlVideoType, setControlVideoType] = useState<ControlVideoType>(null);
+  const [isLoadingControlVideo, setIsLoadingControlVideo] = useState(false);
 
-  const fetchLoopVideoPath = useCallback(async () => {
+  // コントロールボタン設定とプリフェッチ
+  const [controlButtonsConfig, setControlButtonsConfig] = useState<{
+    start?: { action: string; afterAction: string };
+    end?: { action: string; afterAction: string };
+  } | null>(null);
+  const [prefetchedAfterActionPath, setPrefetchedAfterActionPath] = useState<string | null>(null);
+
+  // 背景動画（loop または room）を取得
+  const fetchBackgroundVideo = useCallback(async (action: 'loop' | 'room') => {
     try {
-      // 汎用動画生成APIにloopアクションをリクエスト
+      setIsLoadingBackground(true);
       const response = await fetch('/api/generate-video', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          requests: [{ action: 'loop', params: {} }],
+          requests: [{ action, params: {} }],
         }),
       });
       const data = await response.json();
 
-      // レスポンスからloop動画のURLを取得
-      const loopResult = data.results?.find(
-        (r: { action: string }) => r.action === 'loop'
+      const result = data.results?.find(
+        (r: { action: string }) => r.action === action
       );
-      const nextLoopPath =
-        typeof loopResult?.videoUrl === 'string' && loopResult.videoUrl.length > 0
-          ? loopResult.videoUrl
+      const videoPath =
+        typeof result?.videoUrl === 'string' && result.videoUrl.length > 0
+          ? result.videoUrl
           : null;
 
-      setLoopVideoPath((prev) => (prev === nextLoopPath ? prev : nextLoopPath));
+      setBackgroundVideoPath((prev) => (prev === videoPath ? prev : videoPath));
 
-      if (nextLoopPath) {
-        setLoopVideoError(false);
+      if (videoPath) {
+        setBackgroundVideoError(false);
       } else {
-        setLoopVideoError(true);
+        setBackgroundVideoError(true);
       }
     } catch (error) {
-      console.error('Error fetching loop video path:', error);
-      setLoopVideoError(true);
+      console.error(`Error fetching ${action} video:`, error);
+      setBackgroundVideoError(true);
     } finally {
-      setIsLoadingLoop(false);
+      setIsLoadingBackground(false);
     }
   }, []);
+
+  // コントロールボタン設定を取得
+  useEffect(() => {
+    fetch('/api/settings/control-buttons')
+      .then((res) => res.json())
+      .then((data) => setControlButtonsConfig(data))
+      .catch((err) => console.error('Failed to load control buttons config:', err));
+  }, []);
+
+  // コントロール動画（start または end）を取得（afterAction動画も並列取得）
+  const fetchControlVideo = useCallback(async (action: 'start' | 'end') => {
+    try {
+      setIsLoadingControlVideo(true);
+      setControlVideoType(action);
+
+      // afterActionを設定から取得（デフォルトはloop）
+      const afterAction = controlButtonsConfig?.[action]?.afterAction || 'loop';
+
+      // コントロール動画とafterAction動画を並列で取得
+      const [controlResponse, afterActionResponse] = await Promise.all([
+        fetch('/api/generate-video', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests: [{ action, params: {} }] }),
+        }),
+        fetch('/api/generate-video', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests: [{ action: afterAction, params: {} }] }),
+        }),
+      ]);
+
+      const controlData = await controlResponse.json();
+      const afterActionData = await afterActionResponse.json();
+
+      // コントロール動画のパスを取得
+      const controlResult = controlData.results?.find(
+        (r: { action: string }) => r.action === action
+      );
+      const controlPath =
+        typeof controlResult?.videoUrl === 'string' && controlResult.videoUrl.length > 0
+          ? controlResult.videoUrl
+          : null;
+
+      if (controlPath) {
+        setControlVideoPath(controlPath);
+      }
+
+      // afterAction動画のパスをプリフェッチとして保持
+      const afterActionResult = afterActionData.results?.find(
+        (r: { action: string }) => r.action === afterAction
+      );
+      const afterActionPath =
+        typeof afterActionResult?.videoUrl === 'string' && afterActionResult.videoUrl.length > 0
+          ? afterActionResult.videoUrl
+          : null;
+
+      if (afterActionPath) {
+        setPrefetchedAfterActionPath(afterActionPath);
+      }
+    } catch (error) {
+      console.error(`Error fetching ${action} video:`, error);
+      setControlVideoType(null);
+    } finally {
+      setIsLoadingControlVideo(false);
+    }
+  }, [controlButtonsConfig]);
 
   // 動画生成状態をポーリングで確認する関数
   const pollVideoStatus = useCallback(async () => {
@@ -87,47 +169,25 @@ export default function Home() {
     }
   }, [usedVideoPaths, generatedVideoPath]);
 
-  // スタートアップ動画の取得
-  const fetchStartupVideos = useCallback(async () => {
-    try {
-      const response = await fetch('/api/startup-video');
-      const data = await response.json();
+  // 画面モード選択時の処理
+  const handleScreenModeSelect = useCallback((mode: ScreenMode) => {
+    setScreenMode(mode);
+    setHasStarted(true);
+    // 選択に応じて背景動画を取得
+    const action = mode === 'standby' ? 'loop' : 'room';
+    fetchBackgroundVideo(action);
+  }, [fetchBackgroundVideo]);
 
-      if (!data.enabled || data.videoPaths.length === 0) {
-        // スタートアップ無効または動画なし
-        setIsStartupPhase(false);
-        setIsLoadingStartup(false);
-        return;
-      }
+  // コントロールボタンのハンドラ
+  const handleStartButton = useCallback(() => {
+    if (isLoadingControlVideo || controlVideoType) return;
+    fetchControlVideo('start');
+  }, [fetchControlVideo, isLoadingControlVideo, controlVideoType]);
 
-      setStartupVideoPaths(data.videoPaths);
-      setIsLoadingStartup(false);
-    } catch (error) {
-      console.error('Error fetching startup videos:', error);
-      // エラー時はスタートアップをスキップしてループへ
-      setIsStartupPhase(false);
-      setIsLoadingStartup(false);
-    }
-  }, []);
-
-  // スタートボタンが押されたら動画を取得開始
-  useEffect(() => {
-    if (!hasStarted) return;
-
-    const hasPlayed = sessionStorage.getItem('startup-played');
-    if (hasPlayed) {
-      // 既に再生済みの場合はスタートアップをスキップ
-      setIsStartupPhase(false);
-      setIsLoadingStartup(false);
-      fetchLoopVideoPath();
-      return;
-    }
-
-    // スタートアップ動画を取得
-    fetchStartupVideos();
-    // ループ動画も並行して取得（スタートアップ後に必要）
-    fetchLoopVideoPath();
-  }, [hasStarted, fetchLoopVideoPath, fetchStartupVideos]);
+  const handleEndButton = useCallback(() => {
+    if (isLoadingControlVideo || controlVideoType) return;
+    fetchControlVideo('end');
+  }, [fetchControlVideo, isLoadingControlVideo, controlVideoType]);
 
   // 動画生成状態をポーリングで確認（開始後のみ）
   useEffect(() => {
@@ -140,15 +200,15 @@ export default function Home() {
 
   // エラー時の自動リトライ（5秒ごと）
   useEffect(() => {
-    if (!loopVideoError || loopVideoPath) return;
+    if (!backgroundVideoError || backgroundVideoPath || !screenMode) return;
 
     const retryInterval = setInterval(() => {
-      setIsLoadingLoop(true);
-      fetchLoopVideoPath();
+      const action = screenMode === 'standby' ? 'loop' : 'room';
+      fetchBackgroundVideo(action);
     }, 5000);
 
     return () => clearInterval(retryInterval);
-  }, [loopVideoError, loopVideoPath, fetchLoopVideoPath]);
+  }, [backgroundVideoError, backgroundVideoPath, screenMode, fetchBackgroundVideo]);
 
   const handleSendMessage = useCallback(
     async (message: string) => {
@@ -208,22 +268,9 @@ export default function Home() {
     [messages, isLoading]
   );
 
-  // スタートアップ動画終了時のハンドラ
-  const handleStartupVideoEnd = useCallback(() => {
-    setCurrentStartupIndex((prev) => {
-      const nextIndex = prev + 1;
-      if (nextIndex >= startupVideoPaths.length) {
-        // 全スタートアップ動画再生完了
-        sessionStorage.setItem('startup-played', 'true');
-        setIsStartupPhase(false);
-      }
-      return nextIndex;
-    });
-  }, [startupVideoPaths.length]);
-
   const handleVideoEnd = useCallback(
     (finishedVideoPath: string | null) => {
-      // 終了した動画を使用済みに追加（スタートアップ動画も含む）
+      // 終了した動画を使用済みに追加
       if (finishedVideoPath) {
         setUsedVideoPaths((prev) => {
           const newSet = new Set(prev);
@@ -232,9 +279,16 @@ export default function Home() {
         });
       }
 
-      // スタートアップフェーズの場合
-      if (isStartupPhase && startupVideoPaths.length > 0) {
-        handleStartupVideoEnd();
+      // コントロール動画が終了した場合
+      if (controlVideoPath && finishedVideoPath === controlVideoPath) {
+        setControlVideoPath(null);
+        setControlVideoType(null);
+
+        // プリフェッチ済みのafterAction動画を背景に設定
+        if (prefetchedAfterActionPath) {
+          setBackgroundVideoPath(prefetchedAfterActionPath);
+          setPrefetchedAfterActionPath(null);
+        }
         return;
       }
 
@@ -249,57 +303,76 @@ export default function Home() {
       // 動画終了時に次の動画を即座に取得
       pollVideoStatus();
     },
-    [pollVideoStatus, isStartupPhase, startupVideoPaths.length, handleStartupVideoEnd]
+    [pollVideoStatus, controlVideoPath, prefetchedAfterActionPath]
   );
 
   // 動画パスの決定
-  // スタートアップフェーズの場合はスタートアップ動画を使用
-  // それ以外は生成動画があればそれを使用、なければループ動画
-  const videoPathToUse = isStartupPhase && startupVideoPaths.length > 0
-    ? startupVideoPaths[currentStartupIndex]
+  // コントロール動画 > 生成動画 の優先順位
+  const videoPathToUse = controlVideoPath
+    ? controlVideoPath
     : generatedVideoPath && !usedVideoPaths.has(generatedVideoPath)
       ? generatedVideoPath
       : null;
 
   return (
     <div className="relative w-full h-screen overflow-hidden">
-      {/* スタートボタン（未開始時） */}
+      {/* 初期選択画面（未開始時） */}
       {!hasStarted ? (
         <div className="fixed inset-0 bg-black flex items-center justify-center">
-          <button
-            onClick={() => setHasStarted(true)}
-            className="px-12 py-6 text-3xl font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-2xl transition-colors shadow-lg hover:shadow-xl"
-          >
-            スタート
-          </button>
+          <div className="flex flex-col gap-6">
+            <h1 className="text-white text-2xl font-bold text-center mb-4">
+              画面モードを選択
+            </h1>
+            <button
+              onClick={() => handleScreenModeSelect('standby')}
+              className="px-12 py-6 text-2xl font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-2xl transition-colors shadow-lg hover:shadow-xl"
+            >
+              待機画面
+            </button>
+            <button
+              onClick={() => handleScreenModeSelect('room')}
+              className="px-12 py-6 text-2xl font-bold text-white bg-green-600 hover:bg-green-700 rounded-2xl transition-colors shadow-lg hover:shadow-xl"
+            >
+              初期画面
+            </button>
+          </div>
         </div>
-      ) : loopVideoPath && !isLoadingStartup && (!isStartupPhase || startupVideoPaths.length > 0) ? (
-        /* 動画プレーヤー（背景全面） */
-        <VideoPlayer
-          loopVideoPath={loopVideoPath}
-          generatedVideoPath={
-            isStartupPhase && startupVideoPaths.length > 0
-              ? startupVideoPaths[0]
-              : videoPathToUse
-          }
-          initialQueue={
-            isStartupPhase && startupVideoPaths.length > 1
-              ? startupVideoPaths.slice(1)
-              : undefined
-          }
-          onVideoEnd={handleVideoEnd}
-          enableAudioOnInteraction={false}
-        />
+      ) : backgroundVideoPath && !isLoadingBackground ? (
+        <>
+          {/* 動画プレーヤー（背景全面） */}
+          <VideoPlayer
+            loopVideoPath={backgroundVideoPath}
+            generatedVideoPath={videoPathToUse}
+            onVideoEnd={handleVideoEnd}
+            enableAudioOnInteraction={false}
+          />
+
+          {/* 左側コントロールボタン */}
+          <div className="fixed left-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-10">
+            <button
+              onClick={handleStartButton}
+              disabled={isLoadingControlVideo || !!controlVideoType}
+              className="px-6 py-4 text-lg font-bold text-white bg-orange-500 hover:bg-orange-600 disabled:bg-gray-500 disabled:cursor-not-allowed rounded-xl transition-colors shadow-lg"
+            >
+              {isLoadingControlVideo && controlVideoType === 'start' ? '読込中...' : '開始'}
+            </button>
+            <button
+              onClick={handleEndButton}
+              disabled={isLoadingControlVideo || !!controlVideoType}
+              className="px-6 py-4 text-lg font-bold text-white bg-red-500 hover:bg-red-600 disabled:bg-gray-500 disabled:cursor-not-allowed rounded-xl transition-colors shadow-lg"
+            >
+              {isLoadingControlVideo && controlVideoType === 'end' ? '読込中...' : '終了'}
+            </button>
+          </div>
+        </>
       ) : (
         <div className="fixed inset-0 bg-black flex items-center justify-center">
-          {isLoadingLoop || isLoadingStartup ? (
+          {isLoadingBackground ? (
             <div className="flex flex-col items-center gap-4">
               <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin" />
-              <p className="text-white/70 text-sm">
-                {isLoadingStartup ? '準備中...' : '読み込み中...'}
-              </p>
+              <p className="text-white/70 text-sm">読み込み中...</p>
             </div>
-          ) : loopVideoError ? (
+          ) : backgroundVideoError ? (
             <div className="flex flex-col items-center gap-4">
               <p className="text-white/70 text-sm">動画サーバーに接続できません</p>
               <p className="text-white/50 text-xs">再接続中...</p>

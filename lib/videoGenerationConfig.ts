@@ -19,6 +19,16 @@ export interface StartupConfig {
   requests: StartupRequest[];
 }
 
+export interface ControlButtonConfig {
+  action: string;
+  afterAction: string;
+}
+
+export interface ControlButtonsConfig {
+  start?: ControlButtonConfig;
+  end?: ControlButtonConfig;
+}
+
 export interface VideoGenerationConfig {
   presetId: string;
   actions: Record<string, ActionConfig>;
@@ -28,6 +38,7 @@ export interface VideoGenerationConfig {
     max: number;
   };
   startup?: StartupConfig;
+  controlButtons?: ControlButtonsConfig;
 }
 
 let cachedConfig: VideoGenerationConfig | null = null;
@@ -78,4 +89,14 @@ export function getIdleDurationRange(): { min: number; max: number } {
 export function getStartupConfig(): StartupConfig | null {
   const config = getVideoGenerationConfig();
   return config.startup?.enabled ? config.startup : null;
+}
+
+export function getControlButtonsConfig(): ControlButtonsConfig | null {
+  const config = getVideoGenerationConfig();
+  return config.controlButtons ?? null;
+}
+
+export function getControlButtonConfig(buttonType: 'start' | 'end'): ControlButtonConfig | null {
+  const config = getVideoGenerationConfig();
+  return config.controlButtons?.[buttonType] ?? null;
 }

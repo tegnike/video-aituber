@@ -11,6 +11,12 @@
     "loop": {
       "params": {}
     },
+    "room": {
+      "params": {}
+    },
+    "end": {
+      "params": {}
+    },
     "speak": {
       "params": {
         "text": "",
@@ -21,6 +27,16 @@
       "params": {
         "durationMs": 2000
       }
+    }
+  },
+  "controlButtons": {
+    "start": {
+      "action": "start",
+      "afterAction": "loop"
+    },
+    "end": {
+      "action": "end",
+      "afterAction": "loop"
     }
   },
   "emotions": ["neutral", "thinking"],
