@@ -14,6 +14,12 @@
     "room": {
       "params": {}
     },
+    "dark": {
+      "params": {}
+    },
+    "intro": {
+      "params": {}
+    },
     "end": {
       "params": {}
     },
@@ -29,13 +35,21 @@
       }
     }
   },
+  "screenModes": {
+    "standby": {
+      "backgroundAction": "loop"
+    },
+    "room": {
+      "backgroundAction": "dark"
+    }
+  },
   "controlButtons": {
     "start": {
-      "action": "start",
+      "actions": ["intro", "dark", "start"],
       "afterAction": "loop"
     },
     "end": {
-      "action": "end",
+      "actions": ["end"],
       "afterAction": "loop"
     }
   },

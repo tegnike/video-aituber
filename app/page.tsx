@@ -38,15 +38,26 @@ export default function Home() {
   const [controlVideoType, setControlVideoType] = useState<ControlVideoType>(null);
   const [isLoadingControlVideo, setIsLoadingControlVideo] = useState(false);
 
-  // コントロールボタン設定とプリフェッチ
-  const [controlButtonsConfig, setControlButtonsConfig] = useState<{
-    start?: { action: string; afterAction: string };
-    end?: { action: string; afterAction: string };
+  // 設定
+  const [appConfig, setAppConfig] = useState<{
+    controlButtons: {
+      start?: { actions: string[]; afterAction: string };
+      end?: { actions: string[]; afterAction: string };
+    };
+    screenModes: {
+      standby?: { backgroundAction: string };
+      room?: { backgroundAction: string };
+    };
   } | null>(null);
-  const [prefetchedAfterActionPath, setPrefetchedAfterActionPath] = useState<string | null>(null);
 
-  // 背景動画（loop または room）を取得
-  const fetchBackgroundVideo = useCallback(async (action: 'loop' | 'room') => {
+  // コントロール動画キュー（複数動画を順番に再生）
+  const [controlVideoQueue, setControlVideoQueue] = useState<string[]>([]);
+  const [prefetchedAfterActionPath, setPrefetchedAfterActionPath] = useState<string | null>(null);
+  // 全コントロール動画パス（シーケンス完了検知用）
+  const [allControlVideoPaths, setAllControlVideoPaths] = useState<string[]>([]);
+
+  // 背景動画を取得（任意のアクション）
+  const fetchBackgroundVideo = useCallback(async (action: string) => {
     try {
       setIsLoadingBackground(true);
       const response = await fetch('/api/generate-video', {
@@ -83,54 +94,57 @@ export default function Home() {
     }
   }, []);
 
-  // コントロールボタン設定を取得
+  // 設定を取得
   useEffect(() => {
     fetch('/api/settings/control-buttons')
       .then((res) => res.json())
-      .then((data) => setControlButtonsConfig(data))
-      .catch((err) => console.error('Failed to load control buttons config:', err));
+      .then((data) => setAppConfig(data))
+      .catch((err) => console.error('Failed to load config:', err));
   }, []);
 
-  // コントロール動画（start または end）を取得（afterAction動画も並列取得）
-  const fetchControlVideo = useCallback(async (action: 'start' | 'end') => {
+  // コントロール動画（start または end）を取得（複数動画+afterAction動画を並列取得）
+  const fetchControlVideo = useCallback(async (buttonType: 'start' | 'end') => {
     try {
       setIsLoadingControlVideo(true);
-      setControlVideoType(action);
+      setControlVideoType(buttonType);
 
-      // afterActionを設定から取得（デフォルトはloop）
-      const afterAction = controlButtonsConfig?.[action]?.afterAction || 'loop';
+      // 設定からアクション配列とafterActionを取得
+      const buttonConfig = appConfig?.controlButtons?.[buttonType];
+      const actions = buttonConfig?.actions || [buttonType];
+      const afterAction = buttonConfig?.afterAction || 'loop';
 
-      // コントロール動画とafterAction動画を並列で取得
-      const [controlResponse, afterActionResponse] = await Promise.all([
-        fetch('/api/generate-video', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requests: [{ action, params: {} }] }),
-        }),
-        fetch('/api/generate-video', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requests: [{ action: afterAction, params: {} }] }),
-        }),
-      ]);
-
-      const controlData = await controlResponse.json();
-      const afterActionData = await afterActionResponse.json();
-
-      // コントロール動画のパスを取得
-      const controlResult = controlData.results?.find(
-        (r: { action: string }) => r.action === action
+      // 全てのアクション動画とafterAction動画を並列で取得
+      const allActions = [...actions, afterAction];
+      const responses = await Promise.all(
+        allActions.map((action) =>
+          fetch('/api/generate-video', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests: [{ action, params: {} }] }),
+          })
+        )
       );
-      const controlPath =
-        typeof controlResult?.videoUrl === 'string' && controlResult.videoUrl.length > 0
-          ? controlResult.videoUrl
-          : null;
 
-      if (controlPath) {
-        setControlVideoPath(controlPath);
+      const dataList = await Promise.all(responses.map((r) => r.json()));
+
+      // 各アクションの動画パスを取得
+      const videoPaths: string[] = [];
+      for (let i = 0; i < actions.length; i++) {
+        const action = actions[i];
+        const result = dataList[i].results?.find(
+          (r: { action: string }) => r.action === action
+        );
+        const videoPath =
+          typeof result?.videoUrl === 'string' && result.videoUrl.length > 0
+            ? result.videoUrl
+            : null;
+        if (videoPath) {
+          videoPaths.push(videoPath);
+        }
       }
 
-      // afterAction動画のパスをプリフェッチとして保持
+      // afterAction動画のパス
+      const afterActionData = dataList[actions.length];
       const afterActionResult = afterActionData.results?.find(
         (r: { action: string }) => r.action === afterAction
       );
@@ -139,16 +153,23 @@ export default function Home() {
           ? afterActionResult.videoUrl
           : null;
 
+      // 最初の動画を再生、残りはキューに入れる
+      if (videoPaths.length > 0) {
+        setControlVideoPath(videoPaths[0]);
+        setControlVideoQueue(videoPaths.slice(1));
+        setAllControlVideoPaths(videoPaths);
+      }
+
       if (afterActionPath) {
         setPrefetchedAfterActionPath(afterActionPath);
       }
     } catch (error) {
-      console.error(`Error fetching ${action} video:`, error);
+      console.error(`Error fetching ${buttonType} video:`, error);
       setControlVideoType(null);
     } finally {
       setIsLoadingControlVideo(false);
     }
-  }, [controlButtonsConfig]);
+  }, [appConfig]);
 
   // 動画生成状態をポーリングで確認する関数
   const pollVideoStatus = useCallback(async () => {
@@ -173,10 +194,11 @@ export default function Home() {
   const handleScreenModeSelect = useCallback((mode: ScreenMode) => {
     setScreenMode(mode);
     setHasStarted(true);
-    // 選択に応じて背景動画を取得
-    const action = mode === 'standby' ? 'loop' : 'room';
+    // 設定から背景アクションを取得（デフォルト: standby=loop, room=dark）
+    const defaultAction = mode === 'standby' ? 'loop' : 'dark';
+    const action = appConfig?.screenModes?.[mode]?.backgroundAction || defaultAction;
     fetchBackgroundVideo(action);
-  }, [fetchBackgroundVideo]);
+  }, [fetchBackgroundVideo, appConfig]);
 
   // コントロールボタンのハンドラ
   const handleStartButton = useCallback(() => {
@@ -279,15 +301,22 @@ export default function Home() {
         });
       }
 
-      // コントロール動画が終了した場合
-      if (controlVideoPath && finishedVideoPath === controlVideoPath) {
-        setControlVideoPath(null);
-        setControlVideoType(null);
+      // コントロール動画シーケンスの完了チェック
+      // VideoPlayerが内部キューで管理するため、最後の動画が終了したら状態をクリア
+      if (controlVideoType && finishedVideoPath) {
+        const lastVideoPath = allControlVideoPaths[allControlVideoPaths.length - 1];
+        if (finishedVideoPath === lastVideoPath) {
+          // 全コントロール動画の再生完了
+          setControlVideoPath(null);
+          setControlVideoType(null);
+          setControlVideoQueue([]);
+          setAllControlVideoPaths([]);
 
-        // プリフェッチ済みのafterAction動画を背景に設定
-        if (prefetchedAfterActionPath) {
-          setBackgroundVideoPath(prefetchedAfterActionPath);
-          setPrefetchedAfterActionPath(null);
+          // プリフェッチ済みのafterAction動画を背景に設定
+          if (prefetchedAfterActionPath) {
+            setBackgroundVideoPath(prefetchedAfterActionPath);
+            setPrefetchedAfterActionPath(null);
+          }
         }
         return;
       }
@@ -303,7 +332,7 @@ export default function Home() {
       // 動画終了時に次の動画を即座に取得
       pollVideoStatus();
     },
-    [pollVideoStatus, controlVideoPath, prefetchedAfterActionPath]
+    [pollVideoStatus, controlVideoType, allControlVideoPaths, prefetchedAfterActionPath]
   );
 
   // 動画パスの決定
@@ -343,6 +372,8 @@ export default function Home() {
           <VideoPlayer
             loopVideoPath={backgroundVideoPath}
             generatedVideoPath={videoPathToUse}
+            initialQueue={controlVideoQueue}
+            afterQueueVideoPath={prefetchedAfterActionPath}
             onVideoEnd={handleVideoEnd}
             enableAudioOnInteraction={false}
           />

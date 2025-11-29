@@ -20,13 +20,22 @@ export interface StartupConfig {
 }
 
 export interface ControlButtonConfig {
-  action: string;
+  actions: string[];
   afterAction: string;
 }
 
 export interface ControlButtonsConfig {
   start?: ControlButtonConfig;
   end?: ControlButtonConfig;
+}
+
+export interface ScreenModeConfig {
+  backgroundAction: string;
+}
+
+export interface ScreenModesConfig {
+  standby?: ScreenModeConfig;
+  room?: ScreenModeConfig;
 }
 
 export interface VideoGenerationConfig {
@@ -39,6 +48,7 @@ export interface VideoGenerationConfig {
   };
   startup?: StartupConfig;
   controlButtons?: ControlButtonsConfig;
+  screenModes?: ScreenModesConfig;
 }
 
 let cachedConfig: VideoGenerationConfig | null = null;
@@ -99,4 +109,14 @@ export function getControlButtonsConfig(): ControlButtonsConfig | null {
 export function getControlButtonConfig(buttonType: 'start' | 'end'): ControlButtonConfig | null {
   const config = getVideoGenerationConfig();
   return config.controlButtons?.[buttonType] ?? null;
+}
+
+export function getScreenModesConfig(): ScreenModesConfig | null {
+  const config = getVideoGenerationConfig();
+  return config.screenModes ?? null;
+}
+
+export function getScreenModeConfig(mode: 'standby' | 'room'): ScreenModeConfig | null {
+  const config = getVideoGenerationConfig();
+  return config.screenModes?.[mode] ?? null;
 }
