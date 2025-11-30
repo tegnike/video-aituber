@@ -1,0 +1,61 @@
+{
+  "presetId": "character",
+  "startup": {
+    "enabled": true,
+    "requests": [
+      { "action": "start", "params": {} },
+      { "action": "speak", "params": { "text": "こんにちは！今日も一日頑張りましょう！", "emotion": "neutral" } }
+    ]
+  },
+  "actions": {
+    "loop": {
+      "params": {}
+    },
+    "room": {
+      "params": {}
+    },
+    "dark": {
+      "params": {}
+    },
+    "intro": {
+      "params": {}
+    },
+    "end": {
+      "params": {}
+    },
+    "speak": {
+      "params": {
+        "text": "",
+        "emotion": "neutral"
+      }
+    },
+    "idle": {
+      "params": {
+        "durationMs": 2000
+      }
+    }
+  },
+  "screenModes": {
+    "standby": {
+      "backgroundAction": "loop"
+    },
+    "room": {
+      "backgroundAction": "dark"
+    }
+  },
+  "controlButtons": {
+    "start": {
+      "actions": ["intro", "dark", "start"],
+      "afterAction": "loop"
+    },
+    "end": {
+      "actions": ["end"],
+      "afterAction": "loop"
+    }
+  },
+  "emotions": ["neutral", "thinking"],
+  "idleDurationRange": {
+    "min": 2000,
+    "max": 3000
+  }
+}
