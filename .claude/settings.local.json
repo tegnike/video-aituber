@@ -4,7 +4,12 @@
       "Bash(cat:*)",
       "Bash(lsof:*)",
       "Bash(npx tsc:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(rm:*)",
+      "WebSearch",
+      "WebFetch(domain:onecomme.com)",
+      "WebFetch(domain:documenter.getpostman.com)",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []

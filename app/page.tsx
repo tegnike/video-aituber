@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import VideoPlayer from '@/components/VideoPlayer';
 import ChatInput from '@/components/ChatInput';
 import ChatHistory from '@/components/ChatHistory';
+import { useOneComme } from '@/hooks/useOneComme';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -55,6 +56,9 @@ export default function Home() {
   const [prefetchedAfterActionPath, setPrefetchedAfterActionPath] = useState<string | null>(null);
   // 全コントロール動画パス（シーケンス完了検知用）
   const [allControlVideoPaths, setAllControlVideoPaths] = useState<string[]>([]);
+
+  // わんコメ連携の状態
+  const [oneCommeEnabled, setOneCommeEnabled] = useState(false);
 
   // 背景動画を取得（任意のアクション）
   const fetchBackgroundVideo = useCallback(async (action: string) => {
@@ -290,6 +294,64 @@ export default function Home() {
     [messages, isLoading]
   );
 
+  // わんコメからコメントを受信した時の処理
+  const handleOneCommeComment = useCallback(
+    async (comment: { name: string; comment: string }) => {
+      if (isLoading) return;
+
+      // コメントをユーザーメッセージとして処理（名前付き）
+      const formattedMessage = `[${comment.name}] ${comment.comment}`;
+
+      const userMessage: Message = {
+        role: 'user',
+        content: formattedMessage,
+      };
+      setMessages((prev) => [...prev, userMessage]);
+      setIsLoading(true);
+
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: formattedMessage,
+            history: messages.map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+          }),
+        });
+
+        if (!response.ok) throw new Error('Failed to send message');
+
+        const data = await response.json();
+
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: data.message,
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+      } catch (error) {
+        console.error('Error processing OneComme comment:', error);
+        const errorMessage: Message = {
+          role: 'assistant',
+          content: 'エラーが発生しました。',
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [messages, isLoading]
+  );
+
+  // わんコメ連携フック
+  const { isConnected: oneCommeConnected, error: oneCommeError } = useOneComme({
+    enabled: oneCommeEnabled && hasStarted,
+    mode: 'diff',
+    onComment: handleOneCommeComment,
+  });
+
   const handleVideoEnd = useCallback(
     (finishedVideoPath: string | null) => {
       // 終了した動画を使用済みに追加
@@ -394,6 +456,31 @@ export default function Home() {
             >
               {isLoadingControlVideo && controlVideoType === 'end' ? '読込中...' : '終了'}
             </button>
+
+            {/* わんコメ連携トグル */}
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                onClick={() => setOneCommeEnabled(!oneCommeEnabled)}
+                className={`px-4 py-3 text-sm font-bold text-white rounded-xl transition-colors shadow-lg ${
+                  oneCommeEnabled
+                    ? 'bg-purple-600 hover:bg-purple-700'
+                    : 'bg-gray-600 hover:bg-gray-700'
+                }`}
+              >
+                わんコメ {oneCommeEnabled ? 'ON' : 'OFF'}
+              </button>
+              {oneCommeEnabled && (
+                <div className="text-xs text-center">
+                  {oneCommeConnected ? (
+                    <span className="text-green-400">接続中</span>
+                  ) : oneCommeError ? (
+                    <span className="text-red-400">エラー</span>
+                  ) : (
+                    <span className="text-yellow-400">接続待ち...</span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </>
       ) : (
