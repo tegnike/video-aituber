@@ -40,17 +40,15 @@ export async function POST(request: NextRequest) {
   "message": "ユーザーへの返答メッセージ",
   "requests": [
     { "action": "speak", "params": { "text": "発話内容1", "emotion": "${emotions[0] || 'neutral'}" } },
-    { "action": "idle", "params": { "durationMs": ${idleRange.min} } },
-    { "action": "speak", "params": { "text": "発話内容2", "emotion": "${emotions[1] || 'thinking'}" } }
+    { "action": "speak", "params": { "text": "発話内容2", "emotion": "${emotions[1] || 'thinking'}" } },
+     ...（必要に応じて）
   ]
 }
 
 ## ルール
 - messageは簡潔でわかりやすい返答にしてください
 - requestsは発話と間を表現するアクション列です
-- 発話を分割して、間にidleを入れることで自然な演出ができます
 - emotionは${emotions.map(e => `"${e}"`).join('または')}から選択
-- idleのdurationMsは${idleRange.min}-${idleRange.max}の範囲で設定
 - 利用可能なアクション: ${availableActions.filter(a => a !== 'loop').join(', ')}
 - 短い返答なら1つのspeakだけでもOKです`,
         },
