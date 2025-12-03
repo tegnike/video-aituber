@@ -46,16 +46,17 @@
   "controlButtons": {
     "start": {
       "actions": ["intro", "dark", "start"],
-      "afterAction": "loop"
+      "afterAction": ["loop", "loop2"]
     },
     "end": {
       "actions": ["end"],
-      "afterAction": "loop"
+      "afterAction": ["loop", "loop2"]
     }
   },
   "emotions": ["neutral", "thinking"],
   "idleDurationRange": {
     "min": 2000,
     "max": 3000
-  }
+  },
+  "loopActions": ["loop", "loop2"]
 }

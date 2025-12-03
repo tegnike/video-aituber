@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPresetId } from '@/lib/videoGenerationConfig';
-import { setLoopVideoPath } from '@/lib/loopVideoStore';
+import { getPresetId, getLoopActions } from '@/lib/videoGenerationConfig';
+import { addLoopVideoPath } from '@/lib/loopVideoStore';
 
 export interface VideoRequest {
   action: string;
@@ -118,8 +118,9 @@ export async function POST(request: NextRequest) {
           if (data.type === 'result' && data.result) {
             const result = data.result;
 
-            // ループ動画の場合は共有ストアに保存
-            if (result.action === 'loop') {
+            // ループ動画（loopActionsに含まれるアクション）の場合は共有ストアに保存
+            const loopActions = getLoopActions();
+            if (loopActions.includes(result.action)) {
               const loopPath =
                 result.params?.path ||
                 result.params?.loopVideoPath ||
@@ -130,9 +131,9 @@ export async function POST(request: NextRequest) {
                   loopPath.startsWith('/api/') || loopPath.startsWith('http')
                     ? loopPath
                     : `/api/video?path=${encodeURIComponent(loopPath)}`;
-                setLoopVideoPath(loopVideoUrl);
+                addLoopVideoPath(loopVideoUrl);
                 results.push({
-                  action: 'loop',
+                  action: result.action,
                   outputPath: loopPath,
                   videoUrl: loopVideoUrl,
                 });

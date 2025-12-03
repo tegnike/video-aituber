@@ -49,6 +49,7 @@ export interface VideoGenerationConfig {
   startup?: StartupConfig;
   controlButtons?: ControlButtonsConfig;
   screenModes?: ScreenModesConfig;
+  loopActions?: string[];
 }
 
 let cachedConfig: VideoGenerationConfig | null = null;
@@ -119,4 +120,9 @@ export function getScreenModesConfig(): ScreenModesConfig | null {
 export function getScreenModeConfig(mode: 'standby' | 'room'): ScreenModeConfig | null {
   const config = getVideoGenerationConfig();
   return config.screenModes?.[mode] ?? null;
+}
+
+export function getLoopActions(): string[] {
+  const config = getVideoGenerationConfig();
+  return config.loopActions ?? ['loop'];
 }

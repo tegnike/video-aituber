@@ -25,8 +25,8 @@ export default function Home() {
   );
   const [usedVideoPaths, setUsedVideoPaths] = useState<Set<string>>(new Set());
 
-  // 背景動画（loop or room）
-  const [backgroundVideoPath, setBackgroundVideoPath] = useState<string | null>(null);
+  // 背景動画（loop動画の配列 or room）
+  const [backgroundVideoPaths, setBackgroundVideoPaths] = useState<string[]>([]);
   const [isLoadingBackground, setIsLoadingBackground] = useState(true);
   const [backgroundVideoError, setBackgroundVideoError] = useState(false);
 
@@ -42,56 +42,67 @@ export default function Home() {
   // 設定
   const [appConfig, setAppConfig] = useState<{
     controlButtons: {
-      start?: { actions: string[]; afterAction: string };
-      end?: { actions: string[]; afterAction: string };
+      start?: { actions: string[]; afterAction: string | string[] };
+      end?: { actions: string[]; afterAction: string | string[] };
     };
     screenModes: {
       standby?: { backgroundAction: string };
       room?: { backgroundAction: string };
     };
+    loopActions: string[];
   } | null>(null);
 
   // コントロール動画キュー（複数動画を順番に再生）
   const [controlVideoQueue, setControlVideoQueue] = useState<string[]>([]);
-  const [prefetchedAfterActionPath, setPrefetchedAfterActionPath] = useState<string | null>(null);
+  const [prefetchedAfterActionPaths, setPrefetchedAfterActionPaths] = useState<string[]>([]);
   // 全コントロール動画パス（シーケンス完了検知用）
   const [allControlVideoPaths, setAllControlVideoPaths] = useState<string[]>([]);
 
   // わんコメ連携の状態
   const [oneCommeEnabled, setOneCommeEnabled] = useState(false);
 
-  // 背景動画を取得（任意のアクション）
-  const fetchBackgroundVideo = useCallback(async (action: string) => {
+  // 背景動画を取得（複数アクションを並列取得）
+  const fetchBackgroundVideos = useCallback(async (actions: string[]) => {
     try {
       setIsLoadingBackground(true);
-      const response = await fetch('/api/generate-video', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          requests: [{ action, params: {} }],
-        }),
-      });
-      const data = await response.json();
-
-      const result = data.results?.find(
-        (r: { action: string }) => r.action === action
+      // 複数アクションを並列で取得
+      const responses = await Promise.all(
+        actions.map((action) =>
+          fetch('/api/generate-video', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests: [{ action, params: {} }] }),
+          })
+        )
       );
-      const videoPath =
-        typeof result?.videoUrl === 'string' && result.videoUrl.length > 0
-          ? result.videoUrl
-          : null;
 
-      setBackgroundVideoPath((prev) => (prev === videoPath ? prev : videoPath));
+      const dataList = await Promise.all(responses.map((r) => r.json()));
 
-      if (videoPath) {
+      // 各アクションの動画パスを収集
+      const videoPaths: string[] = [];
+      for (let i = 0; i < actions.length; i++) {
+        const action = actions[i];
+        const result = dataList[i].results?.find(
+          (r: { action: string }) => r.action === action
+        );
+        const videoPath =
+          typeof result?.videoUrl === 'string' && result.videoUrl.length > 0
+            ? result.videoUrl
+            : null;
+        if (videoPath) {
+          videoPaths.push(videoPath);
+        }
+      }
+
+      setBackgroundVideoPaths(videoPaths);
+
+      if (videoPaths.length > 0) {
         setBackgroundVideoError(false);
       } else {
         setBackgroundVideoError(true);
       }
     } catch (error) {
-      console.error(`Error fetching ${action} video:`, error);
+      console.error(`Error fetching background videos:`, error);
       setBackgroundVideoError(true);
     } finally {
       setIsLoadingBackground(false);
@@ -115,10 +126,11 @@ export default function Home() {
       // 設定からアクション配列とafterActionを取得
       const buttonConfig = appConfig?.controlButtons?.[buttonType];
       const actions = buttonConfig?.actions || [buttonType];
-      const afterAction = buttonConfig?.afterAction || 'loop';
+      const afterActionConfig = buttonConfig?.afterAction || 'loop';
+      const afterActions = Array.isArray(afterActionConfig) ? afterActionConfig : [afterActionConfig];
 
       // 全てのアクション動画とafterAction動画を並列で取得
-      const allActions = [...actions, afterAction];
+      const allActions = [...actions, ...afterActions];
       const responses = await Promise.all(
         allActions.map((action) =>
           fetch('/api/generate-video', {
@@ -147,15 +159,22 @@ export default function Home() {
         }
       }
 
-      // afterAction動画のパス
-      const afterActionData = dataList[actions.length];
-      const afterActionResult = afterActionData.results?.find(
-        (r: { action: string }) => r.action === afterAction
-      );
-      const afterActionPath =
-        typeof afterActionResult?.videoUrl === 'string' && afterActionResult.videoUrl.length > 0
-          ? afterActionResult.videoUrl
-          : null;
+      // afterAction動画のパス（複数対応）
+      const afterActionPaths: string[] = [];
+      for (let i = 0; i < afterActions.length; i++) {
+        const action = afterActions[i];
+        const afterActionData = dataList[actions.length + i];
+        const afterActionResult = afterActionData.results?.find(
+          (r: { action: string }) => r.action === action
+        );
+        const afterActionPath =
+          typeof afterActionResult?.videoUrl === 'string' && afterActionResult.videoUrl.length > 0
+            ? afterActionResult.videoUrl
+            : null;
+        if (afterActionPath) {
+          afterActionPaths.push(afterActionPath);
+        }
+      }
 
       // 最初の動画を再生、残りはキューに入れる
       if (videoPaths.length > 0) {
@@ -164,8 +183,8 @@ export default function Home() {
         setAllControlVideoPaths(videoPaths);
       }
 
-      if (afterActionPath) {
-        setPrefetchedAfterActionPath(afterActionPath);
+      if (afterActionPaths.length > 0) {
+        setPrefetchedAfterActionPaths(afterActionPaths);
       }
     } catch (error) {
       console.error(`Error fetching ${buttonType} video:`, error);
@@ -198,11 +217,17 @@ export default function Home() {
   const handleScreenModeSelect = useCallback((mode: ScreenMode) => {
     setScreenMode(mode);
     setHasStarted(true);
-    // 設定から背景アクションを取得（デフォルト: standby=loop, room=dark）
-    const defaultAction = mode === 'standby' ? 'loop' : 'dark';
-    const action = appConfig?.screenModes?.[mode]?.backgroundAction || defaultAction;
-    fetchBackgroundVideo(action);
-  }, [fetchBackgroundVideo, appConfig]);
+
+    if (mode === 'standby') {
+      // standbyモード: loopActionsから複数動画を取得
+      const loopActions = appConfig?.loopActions ?? ['loop'];
+      fetchBackgroundVideos(loopActions);
+    } else {
+      // roomモード: 単一の背景アクションを取得
+      const action = appConfig?.screenModes?.[mode]?.backgroundAction || 'dark';
+      fetchBackgroundVideos([action]);
+    }
+  }, [fetchBackgroundVideos, appConfig]);
 
   // コントロールボタンのハンドラ
   const handleStartButton = useCallback(() => {
@@ -226,15 +251,20 @@ export default function Home() {
 
   // エラー時の自動リトライ（5秒ごと）
   useEffect(() => {
-    if (!backgroundVideoError || backgroundVideoPath || !screenMode) return;
+    if (!backgroundVideoError || backgroundVideoPaths.length > 0 || !screenMode) return;
 
     const retryInterval = setInterval(() => {
-      const action = screenMode === 'standby' ? 'loop' : 'room';
-      fetchBackgroundVideo(action);
+      if (screenMode === 'standby') {
+        const loopActions = appConfig?.loopActions ?? ['loop'];
+        fetchBackgroundVideos(loopActions);
+      } else {
+        const action = appConfig?.screenModes?.[screenMode]?.backgroundAction || 'dark';
+        fetchBackgroundVideos([action]);
+      }
     }, 5000);
 
     return () => clearInterval(retryInterval);
-  }, [backgroundVideoError, backgroundVideoPath, screenMode, fetchBackgroundVideo]);
+  }, [backgroundVideoError, backgroundVideoPaths.length, screenMode, fetchBackgroundVideos, appConfig]);
 
   const handleSendMessage = useCallback(
     async (message: string) => {
@@ -375,9 +405,9 @@ export default function Home() {
           setAllControlVideoPaths([]);
 
           // プリフェッチ済みのafterAction動画を背景に設定
-          if (prefetchedAfterActionPath) {
-            setBackgroundVideoPath(prefetchedAfterActionPath);
-            setPrefetchedAfterActionPath(null);
+          if (prefetchedAfterActionPaths.length > 0) {
+            setBackgroundVideoPaths(prefetchedAfterActionPaths);
+            setPrefetchedAfterActionPaths([]);
           }
         }
         return;
@@ -394,7 +424,7 @@ export default function Home() {
       // 動画終了時に次の動画を即座に取得
       pollVideoStatus();
     },
-    [pollVideoStatus, controlVideoType, allControlVideoPaths, prefetchedAfterActionPath]
+    [pollVideoStatus, controlVideoType, allControlVideoPaths, prefetchedAfterActionPaths]
   );
 
   // 動画パスの決定
@@ -428,14 +458,14 @@ export default function Home() {
             </button>
           </div>
         </div>
-      ) : backgroundVideoPath && !isLoadingBackground ? (
+      ) : backgroundVideoPaths.length > 0 && !isLoadingBackground ? (
         <>
           {/* 動画プレーヤー（背景全面） */}
           <VideoPlayer
-            loopVideoPath={backgroundVideoPath}
+            loopVideoPaths={backgroundVideoPaths}
             generatedVideoPath={videoPathToUse}
             initialQueue={controlVideoQueue}
-            afterQueueVideoPath={prefetchedAfterActionPath}
+            afterQueueVideoPaths={prefetchedAfterActionPaths}
             onVideoEnd={handleVideoEnd}
             enableAudioOnInteraction={false}
           />

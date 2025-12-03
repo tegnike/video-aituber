@@ -10,33 +10,55 @@ import {
 } from 'react';
 
 interface VideoPlayerProps {
-  loopVideoPath: string;
+  loopVideoPaths: string[];
   generatedVideoPath?: string | null;
   initialQueue?: string[];
-  afterQueueVideoPath?: string | null;
+  afterQueueVideoPaths?: string[];
   onVideoEnd?: (finishedVideoPath: string | null) => void;
   enableAudioOnInteraction?: boolean;
 }
 
+// ランダムにloop動画を選択（連続再生防止）
+const getRandomLoopVideo = (
+  loopVideoPaths: string[],
+  lastPlayedPath: string | null
+): string => {
+  if (loopVideoPaths.length === 0) {
+    return '';
+  }
+  if (loopVideoPaths.length === 1) {
+    return loopVideoPaths[0];
+  }
+  // 2つ以上の場合、前回と違う動画をランダムに選択
+  let nextPath: string;
+  do {
+    nextPath = loopVideoPaths[Math.floor(Math.random() * loopVideoPaths.length)];
+  } while (nextPath === lastPlayedPath);
+  return nextPath;
+};
+
 export default function VideoPlayer({
-  loopVideoPath,
+  loopVideoPaths,
   generatedVideoPath,
   initialQueue,
-  afterQueueVideoPath,
+  afterQueueVideoPaths = [],
   onVideoEnd,
   enableAudioOnInteraction = true,
 }: VideoPlayerProps) {
   const video1Ref = useRef<HTMLVideoElement>(null);
   const video2Ref = useRef<HTMLVideoElement>(null);
-  const previousLoopVideoPathRef = useRef(loopVideoPath);
+  const previousLoopVideoPathsRef = useRef<string[]>(loopVideoPaths);
+  const lastPlayedLoopVideoRef = useRef<string | null>(null);
   const processedVideoPathsRef = useRef<Set<string>>(
     new Set(generatedVideoPath ? [generatedVideoPath, ...(initialQueue || [])] : [])
   );
   const hasInitialPlayStartedRef = useRef(false);
   const [activeVideo, setActiveVideo] = useState<1 | 2>(1);
   // 初期動画がある場合はそれを使用、なければループ動画
-  const [video1Src, setVideo1Src] = useState<string>(generatedVideoPath || loopVideoPath);
-  const [video2Src, setVideo2Src] = useState<string>(loopVideoPath);
+  const initialLoopVideo = loopVideoPaths[0] || '';
+  const [video1Src, setVideo1Src] = useState<string>(generatedVideoPath || initialLoopVideo);
+  const [video2Src, setVideo2Src] = useState<string>(initialLoopVideo);
+  const [currentLoopVideoPath, setCurrentLoopVideoPath] = useState<string>(initialLoopVideo);
   const [video1Opacity, setVideo1Opacity] = useState<number>(1);
   const [video2Opacity, setVideo2Opacity] = useState<number>(0);
   const [isGeneratedVideo, setIsGeneratedVideo] = useState(!!generatedVideoPath);
@@ -58,30 +80,40 @@ export default function VideoPlayer({
     }
   }, []);
 
-  // 初期化: 両方のvideo要素をループ動画で設定
+  // loopVideoPathsが変更されたときの初期化処理
   useEffect(() => {
-    const previousLoopPath = previousLoopVideoPathRef.current;
-    if (previousLoopPath === loopVideoPath) {
+    const previousPaths = previousLoopVideoPathsRef.current;
+    const pathsChanged =
+      previousPaths.length !== loopVideoPaths.length ||
+      previousPaths.some((p, i) => p !== loopVideoPaths[i]);
+
+    if (!pathsChanged) {
       return;
     }
 
-    const updateVideoIfUsingPrevious = (
+    // 新しいloop動画の最初の1つを選択
+    const newLoopVideo = loopVideoPaths[0] || '';
+    setCurrentLoopVideoPath(newLoopVideo);
+    lastPlayedLoopVideoRef.current = null;
+
+    const updateVideoIfUsingPreviousLoop = (
       videoRef: MutableRefObject<HTMLVideoElement | null>,
       currentSrc: string,
       setSrc: (value: SetStateAction<string>) => void,
       shouldAutoplay: boolean
     ) => {
-      if (currentSrc !== previousLoopPath) {
+      // 現在のsrcが旧loop動画のいずれかであれば更新
+      if (!previousPaths.includes(currentSrc)) {
         return;
       }
 
-      setSrc(loopVideoPath);
+      setSrc(newLoopVideo);
       const video = videoRef.current;
       if (!video) {
         return;
       }
 
-      video.src = loopVideoPath;
+      video.src = newLoopVideo;
       video.load();
       if (shouldAutoplay) {
         video
@@ -92,22 +124,22 @@ export default function VideoPlayer({
       }
     };
 
-    updateVideoIfUsingPrevious(
+    updateVideoIfUsingPreviousLoop(
       video1Ref,
       video1Src,
       setVideo1Src,
       !isGeneratedVideo && activeVideo === 1
     );
-    updateVideoIfUsingPrevious(
+    updateVideoIfUsingPreviousLoop(
       video2Ref,
       video2Src,
       setVideo2Src,
       !isGeneratedVideo && activeVideo === 2
     );
 
-    previousLoopVideoPathRef.current = loopVideoPath;
+    previousLoopVideoPathsRef.current = loopVideoPaths;
   }, [
-    loopVideoPath,
+    loopVideoPaths,
     video1Src,
     video2Src,
     isGeneratedVideo,
@@ -318,16 +350,19 @@ export default function VideoPlayer({
           (path) => path !== currentSrc
         );
         setPendingGeneratedVideos(remainingVideos);
-        
+
         // キューに次の動画がある場合は、ループ動画をスキップして次の動画に直接切り替え
         if (remainingVideos.length > 0) {
           const [nextVideoPath, ...restVideos] = remainingVideos;
           setPendingGeneratedVideos(restVideos);
           switchVideo(nextVideoPath, true);
         } else {
-          // キューが空の場合はafterQueueVideoPath（指定されている場合）またはループ動画に戻る
-          const targetVideoPath = afterQueueVideoPath || loopVideoPath;
-          switchVideo(targetVideoPath, false);
+          // キューが空の場合はafterQueueVideoPaths（指定されている場合）またはランダムなループ動画に戻る
+          const targetPaths = afterQueueVideoPaths.length > 0 ? afterQueueVideoPaths : loopVideoPaths;
+          const nextVideo = getRandomLoopVideo(targetPaths, lastPlayedLoopVideoRef.current);
+          lastPlayedLoopVideoRef.current = nextVideo;
+          setCurrentLoopVideoPath(nextVideo);
+          switchVideo(nextVideo, false);
         }
       } else {
         // ループ動画が終了したら、キューから最初の動画を取得
@@ -337,10 +372,19 @@ export default function VideoPlayer({
           setPendingGeneratedVideos(remainingVideos);
           switchVideo(nextVideoPath, true);
         } else {
-          // 生成動画がなければ、ループ動画を再開
-          video.play().catch((error) => {
-            console.error('Error replaying video:', error);
-          });
+          // 生成動画がなければ、次のランダムなループ動画に切り替え
+          const nextLoopVideo = getRandomLoopVideo(loopVideoPaths, lastPlayedLoopVideoRef.current);
+          lastPlayedLoopVideoRef.current = nextLoopVideo;
+          setCurrentLoopVideoPath(nextLoopVideo);
+          if (nextLoopVideo === currentLoopVideoPath) {
+            // 同じ動画の場合は再生を再開
+            video.play().catch((error) => {
+              console.error('Error replaying video:', error);
+            });
+          } else {
+            // 異なる動画の場合は切り替え
+            switchVideo(nextLoopVideo, false);
+          }
         }
       }
     };
@@ -354,8 +398,9 @@ export default function VideoPlayer({
     activeVideo,
     isGeneratedVideo,
     pendingGeneratedVideos,
-    loopVideoPath,
-    afterQueueVideoPath,
+    loopVideoPaths,
+    currentLoopVideoPath,
+    afterQueueVideoPaths,
     onVideoEnd,
     switchVideo,
     video1Src,
@@ -385,13 +430,16 @@ export default function VideoPlayer({
 
   // エラーハンドリング
   useEffect(() => {
+    const isLoopVideo = (src: string) =>
+      loopVideoPaths.some((path) => src.includes(path));
+
     const handleError1 = (e: Event) => {
       console.error('Error loading video1:', e);
       const video = video1Ref.current;
       if (!video) return;
 
       // ループ動画の読み込みエラーの場合は、再試行
-      if (video.src.includes(loopVideoPath) && !isGeneratedVideo) {
+      if (isLoopVideo(video.src) && !isGeneratedVideo) {
         setTimeout(() => {
           video.load();
         }, 1000);
@@ -404,7 +452,7 @@ export default function VideoPlayer({
       if (!video) return;
 
       // ループ動画の読み込みエラーの場合は、再試行
-      if (video.src.includes(loopVideoPath) && !isGeneratedVideo) {
+      if (isLoopVideo(video.src) && !isGeneratedVideo) {
         setTimeout(() => {
           video.load();
         }, 1000);
@@ -429,7 +477,7 @@ export default function VideoPlayer({
         video2.removeEventListener('error', handleError2);
       }
     };
-  }, [loopVideoPath, isGeneratedVideo]);
+  }, [loopVideoPaths, isGeneratedVideo]);
 
   return (
     <div className="fixed inset-0 w-full h-full z-0">
