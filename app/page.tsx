@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import VideoPlayer from '@/components/VideoPlayer';
 import ChatInput from '@/components/ChatInput';
 import ChatHistory from '@/components/ChatHistory';
@@ -9,6 +9,11 @@ import { useOneComme } from '@/hooks/useOneComme';
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+}
+
+// セッションID生成
+function generateSessionId(): string {
+  return `session-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 }
 
 // 画面モード: standby=待機画面(loop), room=初期画面(room)
@@ -24,6 +29,9 @@ export default function Home() {
     null
   );
   const [usedVideoPaths, setUsedVideoPaths] = useState<Set<string>>(new Set());
+
+  // セッションID（ページロード時に一度だけ生成）
+  const sessionId = useMemo(() => generateSessionId(), []);
 
   // 背景動画（loop動画の配列 or room）
   const [backgroundVideoPaths, setBackgroundVideoPaths] = useState<string[]>([]);
@@ -279,18 +287,16 @@ export default function Home() {
       setIsLoading(true);
 
       try {
-        // チャットAPIを呼び出し
+        // チャットAPIを呼び出し（ワークフロー用にsessionId, username, commentを送信）
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            message,
-            history: messages.map((m) => ({
-              role: m.role,
-              content: m.content,
-            })),
+            sessionId,
+            username: 'ユーザー',
+            comment: message,
           }),
         });
 
@@ -299,6 +305,11 @@ export default function Home() {
         }
 
         const data = await response.json();
+
+        // shouldRespond: false の場合は応答なし
+        if (data.shouldRespond === false) {
+          return;
+        }
 
         // アシスタントのメッセージを追加
         const assistantMessage: Message = {
@@ -321,7 +332,7 @@ export default function Home() {
         setIsLoading(false);
       }
     },
-    [messages, isLoading]
+    [sessionId, isLoading]
   );
 
   // わんコメからコメントを受信した時の処理
@@ -329,7 +340,7 @@ export default function Home() {
     async (comment: { name: string; comment: string }) => {
       if (isLoading) return;
 
-      // コメントをユーザーメッセージとして処理（名前付き）
+      // コメントをユーザーメッセージとして表示（名前付き）
       const formattedMessage = `[${comment.name}] ${comment.comment}`;
 
       const userMessage: Message = {
@@ -340,21 +351,27 @@ export default function Home() {
       setIsLoading(true);
 
       try {
+        // ワークフローAPI用にsessionId, username, commentを分けて送信
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            message: formattedMessage,
-            history: messages.map((m) => ({
-              role: m.role,
-              content: m.content,
-            })),
+            sessionId,
+            username: comment.name,
+            comment: comment.comment,
           }),
         });
 
         if (!response.ok) throw new Error('Failed to send message');
 
         const data = await response.json();
+
+        // shouldRespond: false の場合は応答なし
+        if (data.shouldRespond === false) {
+          // ユーザーメッセージは表示済みなので、応答なしで終了
+          setMessages((prev) => prev.slice(0, -1)); // ユーザーメッセージも削除
+          return;
+        }
 
         const assistantMessage: Message = {
           role: 'assistant',
@@ -372,7 +389,7 @@ export default function Home() {
         setIsLoading(false);
       }
     },
-    [messages, isLoading]
+    [sessionId, isLoading]
   );
 
   // わんコメ連携フック

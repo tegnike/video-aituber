@@ -9,7 +9,9 @@
       "WebSearch",
       "WebFetch(domain:onecomme.com)",
       "WebFetch(domain:documenter.getpostman.com)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(find:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

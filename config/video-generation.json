@@ -46,11 +46,11 @@
   "controlButtons": {
     "start": {
       "actions": ["intro", "dark", "start"],
-      "afterAction": ["loop", "loop2"]
+      "afterAction": ["loop", "loop2", "loop3", "loop4", "loop5"]
     },
     "end": {
       "actions": ["end"],
-      "afterAction": ["loop", "loop2"]
+      "afterAction": ["loop", "loop2", "loop3", "loop4", "loop5"]
     }
   },
   "emotions": ["neutral", "thinking"],
@@ -58,5 +58,5 @@
     "min": 2000,
     "max": 3000
   },
-  "loopActions": ["loop", "loop2"]
+  "loopActions": ["loop", "loop2", "loop3", "loop4", "loop5"]
 }
