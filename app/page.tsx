@@ -9,6 +9,7 @@ import { useOneComme } from '@/hooks/useOneComme';
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  name?: string;
 }
 
 // セッションID生成
@@ -282,6 +283,7 @@ export default function Home() {
       const userMessage: Message = {
         role: 'user',
         content: message,
+        name: 'マスター',
       };
       setMessages((prev) => [...prev, userMessage]);
       setIsLoading(true);
@@ -295,7 +297,7 @@ export default function Home() {
           },
           body: JSON.stringify({
             sessionId,
-            username: 'ユーザー',
+            username: 'マスター',
             comment: message,
           }),
         });
@@ -340,12 +342,11 @@ export default function Home() {
     async (comment: { name: string; comment: string }) => {
       if (isLoading) return;
 
-      // コメントをユーザーメッセージとして表示（名前付き）
-      const formattedMessage = `[${comment.name}] ${comment.comment}`;
-
+      // コメントをユーザーメッセージとして表示
       const userMessage: Message = {
         role: 'user',
-        content: formattedMessage,
+        content: comment.comment,
+        name: comment.name,
       };
       setMessages((prev) => [...prev, userMessage]);
       setIsLoading(true);
