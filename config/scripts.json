@@ -1,0 +1,28 @@
+{
+  "scripts": [
+    {
+      "id": "greeting",
+      "label": "挨拶",
+      "text": "こんにちは！配信を見に来てくれてありがとうございます！",
+      "emotion": "happy"
+    },
+    {
+      "id": "goodbye",
+      "label": "締め",
+      "text": "今日の配信はここまでです。また次回お会いしましょう！",
+      "emotion": "happy"
+    },
+    {
+      "id": "thanks",
+      "label": "お礼",
+      "text": "コメントありがとうございます！嬉しいです！",
+      "emotion": "happy"
+    },
+    {
+      "id": "thinking",
+      "label": "考え中",
+      "text": "うーん、ちょっと考えさせてください...",
+      "emotion": "thinking"
+    }
+  ]
+}

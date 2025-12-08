@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import VideoPlayer from '@/components/VideoPlayer';
 import ChatInput from '@/components/ChatInput';
 import ChatHistory from '@/components/ChatHistory';
+import ScriptPanel from '@/components/ScriptPanel';
 import { useOneComme } from '@/hooks/useOneComme';
+import { Script } from '@/lib/scriptTypes';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -69,6 +71,9 @@ export default function Home() {
 
   // わんコメ連携の状態
   const [oneCommeEnabled, setOneCommeEnabled] = useState(false);
+
+  // 台本送信中フラグ
+  const [isScriptSending, setIsScriptSending] = useState(false);
 
   // 背景動画を取得（複数アクションを並列取得）
   const fetchBackgroundVideos = useCallback(async (actions: string[]) => {
@@ -248,6 +253,34 @@ export default function Home() {
     if (isLoadingControlVideo || controlVideoType) return;
     fetchControlVideo('end');
   }, [fetchControlVideo, isLoadingControlVideo, controlVideoType]);
+
+  // 台本送信ハンドラ
+  // @requirements 2.3 - 台本送信時に動画生成を開始し、VideoPlayerと連携
+  const handleScriptSend = useCallback(async (script: Script) => {
+    if (isScriptSending) return;
+
+    setIsScriptSending(true);
+    try {
+      const response = await fetch('/api/script-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || '台本の送信に失敗しました');
+      }
+
+      // 動画生成は非同期で実行されるため、ポーリングで結果を取得
+      // 既存のポーリング機構（pollVideoStatus）が動画を検出する
+    } catch (error) {
+      console.error('[handleScriptSend] エラー:', error);
+      throw error; // ScriptPanelでエラー表示するため再throw
+    } finally {
+      setIsScriptSending(false);
+    }
+  }, [isScriptSending]);
 
   // 動画生成状態をポーリングで確認（開始後のみ）
   useEffect(() => {
@@ -495,47 +528,56 @@ export default function Home() {
             enableAudioOnInteraction={false}
           />
 
-          {/* 左側コントロールボタン */}
+          {/* 左側コントロールパネル */}
           <div className="fixed left-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-10">
-            <button
-              onClick={handleStartButton}
-              disabled={isLoadingControlVideo || !!controlVideoType}
-              className="px-6 py-4 text-lg font-bold text-white bg-orange-500 hover:bg-orange-600 disabled:bg-gray-500 disabled:cursor-not-allowed rounded-xl transition-colors shadow-lg"
-            >
-              {isLoadingControlVideo && controlVideoType === 'start' ? '読込中...' : '開始'}
-            </button>
-            <button
-              onClick={handleEndButton}
-              disabled={isLoadingControlVideo || !!controlVideoType}
-              className="px-6 py-4 text-lg font-bold text-white bg-red-500 hover:bg-red-600 disabled:bg-gray-500 disabled:cursor-not-allowed rounded-xl transition-colors shadow-lg"
-            >
-              {isLoadingControlVideo && controlVideoType === 'end' ? '読込中...' : '終了'}
-            </button>
-
-            {/* わんコメ連携トグル */}
-            <div className="mt-4 flex flex-col gap-2">
+            {/* コントロールボタン */}
+            <div className="flex flex-col gap-4">
               <button
-                onClick={() => setOneCommeEnabled(!oneCommeEnabled)}
-                className={`px-4 py-3 text-sm font-bold text-white rounded-xl transition-colors shadow-lg ${
-                  oneCommeEnabled
-                    ? 'bg-purple-600 hover:bg-purple-700'
-                    : 'bg-gray-600 hover:bg-gray-700'
-                }`}
+                onClick={handleStartButton}
+                disabled={isLoadingControlVideo || !!controlVideoType}
+                className="px-6 py-4 text-lg font-bold text-white bg-orange-500 hover:bg-orange-600 disabled:bg-gray-500 disabled:cursor-not-allowed rounded-xl transition-colors shadow-lg"
               >
-                わんコメ {oneCommeEnabled ? 'ON' : 'OFF'}
+                {isLoadingControlVideo && controlVideoType === 'start' ? '読込中...' : '開始'}
               </button>
-              {oneCommeEnabled && (
-                <div className="text-xs text-center">
-                  {oneCommeConnected ? (
-                    <span className="text-green-400">接続中</span>
-                  ) : oneCommeError ? (
-                    <span className="text-red-400">エラー</span>
-                  ) : (
-                    <span className="text-yellow-400">接続待ち...</span>
-                  )}
-                </div>
-              )}
+              <button
+                onClick={handleEndButton}
+                disabled={isLoadingControlVideo || !!controlVideoType}
+                className="px-6 py-4 text-lg font-bold text-white bg-red-500 hover:bg-red-600 disabled:bg-gray-500 disabled:cursor-not-allowed rounded-xl transition-colors shadow-lg"
+              >
+                {isLoadingControlVideo && controlVideoType === 'end' ? '読込中...' : '終了'}
+              </button>
+
+              {/* わんコメ連携トグル */}
+              <div className="mt-4 flex flex-col gap-2">
+                <button
+                  onClick={() => setOneCommeEnabled(!oneCommeEnabled)}
+                  className={`px-4 py-3 text-sm font-bold text-white rounded-xl transition-colors shadow-lg ${
+                    oneCommeEnabled
+                      ? 'bg-purple-600 hover:bg-purple-700'
+                      : 'bg-gray-600 hover:bg-gray-700'
+                  }`}
+                >
+                  わんコメ {oneCommeEnabled ? 'ON' : 'OFF'}
+                </button>
+                {oneCommeEnabled && (
+                  <div className="text-xs text-center">
+                    {oneCommeConnected ? (
+                      <span className="text-green-400">接続中</span>
+                    ) : oneCommeError ? (
+                      <span className="text-red-400">エラー</span>
+                    ) : (
+                      <span className="text-yellow-400">接続待ち...</span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
+
+            {/* 台本パネル */}
+            <ScriptPanel
+              onScriptSend={handleScriptSend}
+              isSending={isScriptSending}
+            />
           </div>
         </>
       ) : (
