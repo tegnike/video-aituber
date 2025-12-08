@@ -342,10 +342,17 @@ export default function Home() {
     async (comment: { name: string; comment: string }) => {
       if (isLoading) return;
 
+      // #で始まるコメントのみLLMに送信
+      if (!comment.comment.startsWith('#')) return;
+
+      // 先頭の#を削除
+      const messageContent = comment.comment.slice(1).trim();
+      if (!messageContent) return;
+
       // コメントをユーザーメッセージとして表示
       const userMessage: Message = {
         role: 'user',
-        content: comment.comment,
+        content: messageContent,
         name: comment.name,
       };
       setMessages((prev) => [...prev, userMessage]);
@@ -359,7 +366,7 @@ export default function Home() {
           body: JSON.stringify({
             sessionId,
             username: comment.name,
-            comment: comment.comment,
+            comment: messageContent,
           }),
         });
 
