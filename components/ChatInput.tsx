@@ -32,7 +32,7 @@ export default function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
           disabled={disabled}
           className="flex-1 px-5 py-3 rounded-xl bg-white/95 text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 shadow-lg backdrop-blur-sm transition-all"
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               handleSubmit(e as any);
             }
