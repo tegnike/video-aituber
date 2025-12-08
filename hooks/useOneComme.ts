@@ -3,13 +3,38 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
 // OneSDKの型定義
+// @see https://onecomme.com/docs/developer/onesdk-js
 interface OneCommeComment {
+  /** コメントの一意識別子 */
   id: string;
+  /** ユーザー名 */
   name: string;
+  /** コメント本文 */
   comment: string;
+  /** プロフィール画像URL */
   profileImage?: string;
+  /** 配信サービス識別子 (youtube, twitch, nicolive, etc.) */
   service?: string;
+  /** コメント投稿時刻（UNIXタイムスタンプ） */
   timestamp?: number;
+  /** ユーザーID（YouTubeの場合はチャンネルID、Twitchの場合はユーザーIDなど） */
+  userId?: string;
+  /** 表示名（プラットフォームによって異なる名前表示用） */
+  displayName?: string;
+  /** スクリーンネーム（@で始まるID形式の名前、Twitterなど） */
+  screenName?: string;
+  /** わんコメで設定したニックネーム（ユーザーごとのカスタム名） */
+  nickname?: string;
+  /** バッジ情報（メンバーシップ、モデレーター、認証バッジなど） */
+  badges?: Array<{ label?: string; url?: string }>;
+  /** 配信者本人のコメントかどうか */
+  isOwner?: boolean;
+  /** サポーター判定（メンバーシップ、サブスクライバーなど） */
+  isSupporter?: boolean;
+  /** スーパーチャット・ギフト付きコメントかどうか */
+  hasGift?: boolean;
+  /** 配信ID（同一配信のコメントを識別するため） */
+  liveId?: string;
 }
 
 interface OneSDKConfig {
@@ -90,6 +115,16 @@ export function useOneComme(options: UseOneCommeOptions = {}): UseOneCommeReturn
         profileImage: commentData?.profileImage || commentData?.author?.profileImage,
         service: commentData?.service || item?.service,
         timestamp: commentData?.timestamp || Date.now(),
+        // 追加情報
+        userId: commentData?.userId || commentData?.author?.id,
+        displayName: commentData?.displayName || commentData?.author?.displayName,
+        screenName: commentData?.screenName || commentData?.author?.screenName,
+        nickname: commentData?.nickname,
+        badges: commentData?.badges,
+        isOwner: commentData?.isOwner,
+        isSupporter: commentData?.isSupporter,
+        hasGift: commentData?.hasGift,
+        liveId: commentData?.liveId,
       };
 
       if (comment.comment) {
