@@ -77,4 +77,5 @@ export type RemoteCommand =
   | { type: 'controlVideo'; action: 'start' | 'end' }
   | { type: 'sendScript'; script: Script }
   | { type: 'toggleOneComme'; enabled: boolean }
-  | { type: 'setUIVisibility'; target: 'controls' | 'chatHistory' | 'chatInput'; visible: boolean };
+  | { type: 'setUIVisibility'; target: 'controls' | 'chatHistory' | 'chatInput'; visible: boolean }
+  | { type: 'sendMessage'; message: string; username: string };

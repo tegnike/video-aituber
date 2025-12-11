@@ -9,11 +9,13 @@ import { useState, useCallback } from 'react';
 import { useRemoteSync } from '@/hooks/useRemoteSync';
 import ScriptPanel from '@/components/ScriptPanel';
 import ScriptAutoSenderPanel from '@/components/ScriptAutoSenderPanel';
+import MessageFormPanel from '@/components/MessageFormPanel';
 import type { Script } from '@/lib/scriptTypes';
 
 export default function RemoteControlPage() {
   const { state, isConnected, error, sendCommand } = useRemoteSync();
   const [isScriptSending, setIsScriptSending] = useState(false);
+  const [isMessageSending, setIsMessageSending] = useState(false);
 
   // 台本送信ハンドラ（Hookは早期returnより前に定義）
   const handleScriptSend = useCallback(async (script: Script) => {
@@ -26,6 +28,18 @@ export default function RemoteControlPage() {
       setIsScriptSending(false);
     }
   }, [isScriptSending, sendCommand]);
+
+  // メッセージ送信ハンドラ
+  const handleMessageSend = useCallback(async (message: string, username: string) => {
+    if (isMessageSending) return;
+
+    setIsMessageSending(true);
+    try {
+      await sendCommand({ type: 'sendMessage', message, username });
+    } finally {
+      setIsMessageSending(false);
+    }
+  }, [isMessageSending, sendCommand]);
 
   // 接続待機中
   if (!isConnected && !error) {
@@ -176,6 +190,14 @@ export default function RemoteControlPage() {
           <ScriptAutoSenderPanel
             onScriptSend={handleScriptSend}
             isSending={isScriptSending}
+          />
+        )}
+
+        {/* メッセージフォームパネル */}
+        {state && (
+          <MessageFormPanel
+            onMessageSend={handleMessageSend}
+            isSending={isMessageSending}
           />
         )}
       </div>

@@ -16,6 +16,7 @@ export interface UseMainScreenSyncOptions {
   onToggleOneComme: (enabled: boolean) => void;
   onUIVisibilityChange: (target: 'controls' | 'chatHistory' | 'chatInput', visible: boolean) => void;
   onSendScript?: (script: Script) => void;
+  onSendMessage?: (message: string, username: string) => void;
 }
 
 export interface UseMainScreenSyncReturn {
@@ -53,6 +54,9 @@ export function useMainScreenSync(options: UseMainScreenSyncOptions): UseMainScr
         break;
       case 'sendScript':
         callbacksRef.current.onSendScript?.(command.script);
+        break;
+      case 'sendMessage':
+        callbacksRef.current.onSendMessage?.(command.message, command.username);
         break;
     }
   }, []);

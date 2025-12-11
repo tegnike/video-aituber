@@ -21,6 +21,8 @@ function isValidCommand(cmd: unknown): cmd is RemoteCommand {
         (c.target === 'controls' || c.target === 'chatHistory' || c.target === 'chatInput') &&
         typeof c.visible === 'boolean'
       );
+    case 'sendMessage':
+      return typeof c.message === 'string' && typeof c.username === 'string';
     default:
       return false;
   }
@@ -63,6 +65,9 @@ export async function POST(request: Request) {
       });
       break;
     }
+    case 'sendMessage':
+      // メッセージ送信はキューに追加するのみ（メイン画面で処理）
+      break;
   }
 
   // コマンドキューに追加（ポーリングで取得される）

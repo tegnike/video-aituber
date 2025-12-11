@@ -345,4 +345,22 @@ describe('RemoteControlPage', () => {
       expect(screen.getByText('台本')).toBeInTheDocument();
     });
   });
+
+  describe('4. パネル表示', () => {
+    it('すべてのパネルが表示される', () => {
+      mockUseRemoteSync.mockReturnValue({
+        state: createMockState({ hasStarted: true }),
+        isConnected: true,
+        error: null,
+        sendCommand: mockSendCommand,
+      });
+
+      render(<RemoteControlPage />);
+
+      // 台本パネル、自動送信パネル、メッセージフォームがすべて表示される
+      expect(screen.getByText('台本', { selector: 'h2' })).toBeInTheDocument();
+      expect(screen.getByText('自動送信', { selector: 'h2' })).toBeInTheDocument();
+      expect(screen.getByText('メッセージ送信')).toBeInTheDocument();
+    });
+  });
 });

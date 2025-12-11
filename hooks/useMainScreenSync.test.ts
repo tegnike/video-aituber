@@ -275,6 +275,59 @@ describe('useMainScreenSync (Polling)', () => {
 
       expect(onSendScript).toHaveBeenCalledWith(script);
     });
+
+    it('sendMessageコマンドでonSendMessageコールバックを呼び出す', async () => {
+      const { useMainScreenSync } = await import('./useMainScreenSync');
+      const { renderHook, act } = await import('@testing-library/react');
+      const onSendMessage = vi.fn();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          commands: [{ type: 'sendMessage', message: 'こんにちは', username: 'テストユーザー' }],
+        }),
+      });
+
+      renderHook(() => useMainScreenSync({
+        onSelectMode: vi.fn(),
+        onControlVideo: vi.fn(),
+        onToggleOneComme: vi.fn(),
+        onUIVisibilityChange: vi.fn(),
+        onSendMessage,
+      }));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(onSendMessage).toHaveBeenCalledWith('こんにちは', 'テストユーザー');
+    });
+
+    it('onSendMessageが未設定でもエラーにならない', async () => {
+      const { useMainScreenSync } = await import('./useMainScreenSync');
+      const { renderHook, act } = await import('@testing-library/react');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          commands: [{ type: 'sendMessage', message: 'テスト', username: '配信者' }],
+        }),
+      });
+
+      // onSendMessageを設定せずにhookを使用
+      expect(() => {
+        renderHook(() => useMainScreenSync({
+          onSelectMode: vi.fn(),
+          onControlVideo: vi.fn(),
+          onToggleOneComme: vi.fn(),
+          onUIVisibilityChange: vi.fn(),
+        }));
+      }).not.toThrow();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    });
   });
 
   describe('状態報告', () => {
