@@ -92,14 +92,6 @@ export default function Home() {
   // @see .kiro/specs/comment-queue-control/design.md
   const [commentQueue, setCommentQueue] = useState<QueuedComment[]>([]);
 
-  // リモート同期の有効化フラグ（クエリパラメータで制御）
-  const [isRemoteSyncEnabled, setIsRemoteSyncEnabled] = useState(false);
-
-  // クエリパラメータを確認（?remote=true でリモート同期を有効化）
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setIsRemoteSyncEnabled(params.get('remote') === 'true');
-  }, []);
 
   // 背景動画を取得（複数アクションを並列取得）
   const fetchBackgroundVideos = useCallback(async (actions: string[]) => {
@@ -655,7 +647,7 @@ export default function Home() {
   // @see .kiro/specs/comment-queue-control/design.md - コメントキュー状態の同期
   const lastReportedStateRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!isRemoteSyncEnabled || !isRemoteConnected) return;
+    if (!isRemoteConnected) return;
 
     const currentState: AppState = {
       hasStarted,
@@ -678,7 +670,6 @@ export default function Home() {
       });
     }
   }, [
-    isRemoteSyncEnabled,
     isRemoteConnected,
     hasStarted,
     screenMode,
