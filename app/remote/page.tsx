@@ -60,11 +60,6 @@ export default function RemoteControlPage() {
   // 操作無効化の判定
   const isControlDisabled = state?.isLoadingControlVideo || !!state?.controlVideoType;
 
-  // モード選択ハンドラ
-  const handleModeSelect = (mode: 'standby' | 'room') => {
-    sendCommand({ type: 'selectMode', mode });
-  };
-
   // コントロールボタンハンドラ
   const handleControlVideo = (action: 'start' | 'end') => {
     sendCommand({ type: 'controlVideo', action });
@@ -112,29 +107,8 @@ export default function RemoteControlPage() {
           )}
         </div>
 
-        {/* モード選択（未開始時のみ） */}
-        {!state?.hasStarted && (
-          <div className="bg-gray-800 rounded-lg p-4 mb-4">
-            <h2 className="text-white/70 text-sm mb-3">画面モード選択</h2>
-            <div className="flex gap-3">
-              <button
-                onClick={() => handleModeSelect('standby')}
-                className="flex-1 px-4 py-3 text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-              >
-                待機画面
-              </button>
-              <button
-                onClick={() => handleModeSelect('room')}
-                className="flex-1 px-4 py-3 text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
-              >
-                初期画面
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* コントロールボタン（開始後のみ） */}
-        {state?.hasStarted && (
+        {/* コントロールボタン */}
+        {state && (
           <div className="bg-gray-800 rounded-lg p-4 mb-4">
             <h2 className="text-white/70 text-sm mb-3">コントロール</h2>
             <div className="flex gap-3">
@@ -160,8 +134,8 @@ export default function RemoteControlPage() {
           </div>
         )}
 
-        {/* わんコメ連携（開始後のみ） */}
-        {state?.hasStarted && (
+        {/* わんコメ連携 */}
+        {state && (
           <div className="bg-gray-800 rounded-lg p-4 mb-4">
             <h2 className="text-white/70 text-sm mb-3">わんコメ連携</h2>
             <div className="flex items-center justify-between">
@@ -189,16 +163,16 @@ export default function RemoteControlPage() {
           </div>
         )}
 
-        {/* 台本パネル（開始後のみ） */}
-        {state?.hasStarted && (
+        {/* 台本パネル */}
+        {state && (
           <ScriptPanel
             onScriptSend={handleScriptSend}
             isSending={isScriptSending}
           />
         )}
 
-        {/* 台本自動送信パネル（開始後のみ） */}
-        {state?.hasStarted && (
+        {/* 台本自動送信パネル */}
+        {state && (
           <ScriptAutoSenderPanel
             onScriptSend={handleScriptSend}
             isSending={isScriptSending}

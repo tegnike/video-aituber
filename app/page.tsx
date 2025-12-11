@@ -43,9 +43,10 @@ export default function Home() {
   const [isLoadingBackground, setIsLoadingBackground] = useState(true);
   const [backgroundVideoError, setBackgroundVideoError] = useState(false);
 
-  // 画面モード選択
-  const [hasStarted, setHasStarted] = useState(false);
-  const [screenMode, setScreenMode] = useState<ScreenMode | null>(null);
+  // 画面モード（初回から待機画面を表示）
+  // @requirements 2.1, 2.2 - hasStartedは常にtrue、screenModeはstandbyで初期化
+  const [hasStarted] = useState(true);
+  const [screenMode, setScreenMode] = useState<ScreenMode>('standby');
 
   // コントロールボタンからの動画再生管理
   const [controlVideoPath, setControlVideoPath] = useState<string | null>(null);
@@ -151,6 +152,18 @@ export default function Home() {
       .catch((err) => console.error('Failed to load config:', err));
   }, []);
 
+  // 設定読み込み後に背景動画を自動取得（初期化時のみ）
+  // @requirements 1.2 - アプリ起動時に背景動画の読み込みを開始
+  const initialBackgroundFetchedRef = useRef(false);
+  useEffect(() => {
+    if (!appConfig || initialBackgroundFetchedRef.current) return;
+    initialBackgroundFetchedRef.current = true;
+
+    // standbyモードの場合はloopActionsから動画を取得
+    const loopActions = appConfig.loopActions ?? ['loop'];
+    fetchBackgroundVideos(loopActions);
+  }, [appConfig, fetchBackgroundVideos]);
+
   // コントロール動画（start または end）を取得（複数動画+afterAction動画を並列取得）
   const fetchControlVideo = useCallback(async (buttonType: 'start' | 'end') => {
     try {
@@ -247,10 +260,10 @@ export default function Home() {
     }
   }, [usedVideoPaths, generatedVideoPath]);
 
-  // 画面モード選択時の処理
+  // 画面モード選択時の処理（リモートからのselectModeコマンド用）
+  // @requirements 3.2, 4.3 - setHasStartedを削除（常にtrue）、リモートからのモード切り替えを維持
   const handleScreenModeSelect = useCallback((mode: ScreenMode) => {
     setScreenMode(mode);
-    setHasStarted(true);
 
     if (mode === 'standby') {
       // standbyモード: loopActionsから複数動画を取得
@@ -614,28 +627,8 @@ export default function Home() {
 
   return (
     <div className="relative w-full h-screen overflow-hidden">
-      {/* 初期選択画面（未開始時） */}
-      {!hasStarted ? (
-        <div className="fixed inset-0 bg-black flex items-center justify-center">
-          <div className="flex flex-col gap-6">
-            <h1 className="text-white text-2xl font-bold text-center mb-4">
-              画面モードを選択
-            </h1>
-            <button
-              onClick={() => handleScreenModeSelect('standby')}
-              className="px-12 py-6 text-2xl font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-2xl transition-colors shadow-lg hover:shadow-xl"
-            >
-              待機画面
-            </button>
-            <button
-              onClick={() => handleScreenModeSelect('room')}
-              className="px-12 py-6 text-2xl font-bold text-white bg-green-600 hover:bg-green-700 rounded-2xl transition-colors shadow-lg hover:shadow-xl"
-            >
-              初期画面
-            </button>
-          </div>
-        </div>
-      ) : backgroundVideoPaths.length > 0 && !isLoadingBackground ? (
+      {/* メイン画面 */}
+      {backgroundVideoPaths.length > 0 && !isLoadingBackground ? (
         <>
           {/* 動画プレーヤー（背景全面） */}
           <VideoPlayer
