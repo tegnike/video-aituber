@@ -14,6 +14,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   name?: string;
+  profileImage?: string;
 }
 
 // セッションID生成
@@ -428,7 +429,7 @@ export default function Home() {
 
   // わんコメからコメントを受信した時の処理
   const handleOneCommeComment = useCallback(
-    async (comment: { name: string; comment: string }) => {
+    async (comment: { name: string; comment: string; profileImage?: string }) => {
       if (isLoading) return;
 
       // #で始まるコメントのみLLMに送信
@@ -443,6 +444,7 @@ export default function Home() {
         role: 'user',
         content: messageContent,
         name: comment.name,
+        profileImage: comment.profileImage,
       };
       setMessages((prev) => [...prev, userMessage]);
       setIsLoading(true);
@@ -714,7 +716,7 @@ export default function Home() {
       {/* チャット履歴 */}
       {/* @requirements 5.2 - リモートパネルからの表示/非表示切替 */}
       {uiVisibility.chatHistory && (
-        <ChatHistory messages={messages} isLoading={isLoading} />
+        <ChatHistory messages={messages} />
       )}
 
       {/* チャット入力 */}
