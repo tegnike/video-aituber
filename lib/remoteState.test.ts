@@ -5,6 +5,8 @@ import {
   resetAppState,
   subscribe,
   type AppState,
+  type QueuedComment,
+  type RemoteCommand,
 } from './remoteState';
 
 describe('remoteState', () => {
@@ -29,6 +31,7 @@ describe('remoteState', () => {
           chatHistory: true,
           chatInput: true,
         },
+        commentQueue: [],
       });
     });
   });
@@ -115,6 +118,80 @@ describe('remoteState', () => {
 
       unsub1();
       unsub2();
+    });
+  });
+
+  describe('QueuedComment型', () => {
+    it('必須フィールドを持つ', () => {
+      const comment: QueuedComment = {
+        id: 'comment-1',
+        name: 'テストユーザー',
+        comment: 'テストコメント',
+        receivedAt: Date.now(),
+        isSent: false,
+      };
+      expect(comment.id).toBe('comment-1');
+      expect(comment.name).toBe('テストユーザー');
+      expect(comment.comment).toBe('テストコメント');
+      expect(comment.isSent).toBe(false);
+    });
+
+    it('オプショナルなprofileImageフィールドを持てる', () => {
+      const comment: QueuedComment = {
+        id: 'comment-2',
+        name: 'テストユーザー',
+        comment: 'テストコメント',
+        profileImage: 'https://example.com/avatar.png',
+        receivedAt: Date.now(),
+        isSent: false,
+      };
+      expect(comment.profileImage).toBe('https://example.com/avatar.png');
+    });
+  });
+
+  describe('commentQueue in AppState', () => {
+    it('初期状態で空配列を持つ', () => {
+      const state = getAppState();
+      expect(state.commentQueue).toEqual([]);
+    });
+
+    it('コメントキューを更新できる', () => {
+      const comment: QueuedComment = {
+        id: 'comment-1',
+        name: 'テストユーザー',
+        comment: 'テストコメント',
+        receivedAt: Date.now(),
+        isSent: false,
+      };
+      updateAppState({ commentQueue: [comment] });
+      const state = getAppState();
+      expect(state.commentQueue.length).toBe(1);
+      expect(state.commentQueue[0].id).toBe('comment-1');
+    });
+
+    it('リセット時にコメントキューも空になる', () => {
+      const comment: QueuedComment = {
+        id: 'comment-1',
+        name: 'テストユーザー',
+        comment: 'テストコメント',
+        receivedAt: Date.now(),
+        isSent: false,
+      };
+      updateAppState({ commentQueue: [comment] });
+      resetAppState();
+      const state = getAppState();
+      expect(state.commentQueue).toEqual([]);
+    });
+  });
+
+  describe('sendQueuedComment command', () => {
+    it('RemoteCommand型にsendQueuedCommentが含まれる', () => {
+      const command: RemoteCommand = {
+        type: 'sendQueuedComment',
+        commentId: 'comment-1',
+      };
+      expect(command.type).toBe('sendQueuedComment');
+      expect(command.commentId).toBe('comment-1');
     });
   });
 

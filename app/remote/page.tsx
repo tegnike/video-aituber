@@ -10,12 +10,14 @@ import { useRemoteSync } from '@/hooks/useRemoteSync';
 import ScriptPanel from '@/components/ScriptPanel';
 import ScriptAutoSenderPanel from '@/components/ScriptAutoSenderPanel';
 import MessageFormPanel from '@/components/MessageFormPanel';
+import CommentQueuePanel from '@/components/CommentQueuePanel';
 import type { Script } from '@/lib/scriptTypes';
 
 export default function RemoteControlPage() {
   const { state, isConnected, error, sendCommand } = useRemoteSync();
   const [isScriptSending, setIsScriptSending] = useState(false);
   const [isMessageSending, setIsMessageSending] = useState(false);
+  const [sendingCommentId, setSendingCommentId] = useState<string | undefined>(undefined);
 
   // 台本送信ハンドラ（Hookは早期returnより前に定義）
   const handleScriptSend = useCallback(async (script: Script) => {
@@ -40,6 +42,19 @@ export default function RemoteControlPage() {
       setIsMessageSending(false);
     }
   }, [isMessageSending, sendCommand]);
+
+  // コメントキュー送信ハンドラ
+  // @see .kiro/specs/comment-queue-control/design.md - sendQueuedComment
+  const handleSendQueuedComment = useCallback(async (commentId: string) => {
+    if (sendingCommentId) return;
+
+    setSendingCommentId(commentId);
+    try {
+      await sendCommand({ type: 'sendQueuedComment', commentId });
+    } finally {
+      setSendingCommentId(undefined);
+    }
+  }, [sendingCommentId, sendCommand]);
 
   // 接続待機中
   if (!isConnected && !error) {
@@ -200,13 +215,23 @@ export default function RemoteControlPage() {
           )}
         </div>
 
-        {/* 右カラム: メッセージフォーム */}
+        {/* 右カラム: メッセージフォーム + コメントキュー */}
         <div className="space-y-4">
           {/* メッセージフォームパネル */}
           {state && (
             <MessageFormPanel
               onMessageSend={handleMessageSend}
               isSending={isMessageSending}
+            />
+          )}
+
+          {/* コメントキューパネル */}
+          {/* @see .kiro/specs/comment-queue-control/design.md - CommentQueuePanel */}
+          {state && (
+            <CommentQueuePanel
+              commentQueue={state.commentQueue}
+              onSendComment={handleSendQueuedComment}
+              sendingCommentId={sendingCommentId}
             />
           )}
         </div>

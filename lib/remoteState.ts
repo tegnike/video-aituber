@@ -1,7 +1,27 @@
 /**
  * リモート操作パネル用の共有状態管理
  * @see .kiro/specs/remote-control-panel/design.md - Data Models
+ * @see .kiro/specs/comment-queue-control/design.md - QueuedComment
  */
+
+/**
+ * キューイングされたコメント
+ * @see .kiro/specs/comment-queue-control/design.md - Data Models
+ */
+export interface QueuedComment {
+  /** コメントID（わんコメから取得） */
+  id: string;
+  /** ユーザー名 */
+  name: string;
+  /** コメント内容 */
+  comment: string;
+  /** プロフィール画像URL（オプショナル） */
+  profileImage?: string;
+  /** 受信時刻（UNIXタイムスタンプ） */
+  receivedAt: number;
+  /** 送信済みフラグ */
+  isSent: boolean;
+}
 
 export interface AppState {
   hasStarted: boolean;
@@ -17,6 +37,8 @@ export interface AppState {
     chatHistory: boolean;
     chatInput: boolean;
   };
+  /** コメントキュー（わんコメから受信したコメントのキュー） */
+  commentQueue: QueuedComment[];
 }
 
 const initialState: AppState = {
@@ -33,15 +55,20 @@ const initialState: AppState = {
     chatHistory: true,
     chatInput: true,
   },
+  commentQueue: [],
 };
 
-let appState: AppState = { ...initialState, uiVisibility: { ...initialState.uiVisibility } };
+let appState: AppState = { ...initialState, uiVisibility: { ...initialState.uiVisibility }, commentQueue: [] };
 
 type Subscriber = (state: AppState) => void;
 const subscribers: Set<Subscriber> = new Set();
 
 export const getAppState = (): AppState => {
-  return { ...appState, uiVisibility: { ...appState.uiVisibility } };
+  return {
+    ...appState,
+    uiVisibility: { ...appState.uiVisibility },
+    commentQueue: [...appState.commentQueue],
+  };
 };
 
 export const updateAppState = (partial: Partial<AppState>): void => {
@@ -51,6 +78,9 @@ export const updateAppState = (partial: Partial<AppState>): void => {
     uiVisibility: partial.uiVisibility
       ? { ...partial.uiVisibility }
       : { ...appState.uiVisibility },
+    commentQueue: partial.commentQueue
+      ? [...partial.commentQueue]
+      : [...appState.commentQueue],
   };
 
   subscribers.forEach((subscriber) => {
@@ -59,7 +89,7 @@ export const updateAppState = (partial: Partial<AppState>): void => {
 };
 
 export const resetAppState = (): void => {
-  appState = { ...initialState, uiVisibility: { ...initialState.uiVisibility } };
+  appState = { ...initialState, uiVisibility: { ...initialState.uiVisibility }, commentQueue: [] };
 };
 
 export const subscribe = (subscriber: Subscriber): (() => void) => {
@@ -78,4 +108,5 @@ export type RemoteCommand =
   | { type: 'sendScript'; script: Script }
   | { type: 'toggleOneComme'; enabled: boolean }
   | { type: 'setUIVisibility'; target: 'controls' | 'chatHistory' | 'chatInput'; visible: boolean }
-  | { type: 'sendMessage'; message: string; username: string };
+  | { type: 'sendMessage'; message: string; username: string }
+  | { type: 'sendQueuedComment'; commentId: string };

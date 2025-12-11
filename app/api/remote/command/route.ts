@@ -23,6 +23,8 @@ function isValidCommand(cmd: unknown): cmd is RemoteCommand {
       );
     case 'sendMessage':
       return typeof c.message === 'string' && typeof c.username === 'string';
+    case 'sendQueuedComment':
+      return typeof c.commentId === 'string';
     default:
       return false;
   }
@@ -67,6 +69,9 @@ export async function POST(request: Request) {
     }
     case 'sendMessage':
       // メッセージ送信はキューに追加するのみ（メイン画面で処理）
+      break;
+    case 'sendQueuedComment':
+      // コメント送信はキューに追加するのみ（メイン画面で処理）
       break;
   }
 

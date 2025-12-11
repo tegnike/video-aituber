@@ -8,7 +8,7 @@ import ScriptPanel from '@/components/ScriptPanel';
 import { useOneComme } from '@/hooks/useOneComme';
 import { useMainScreenSync } from '@/hooks/useMainScreenSync';
 import { Script } from '@/lib/scriptTypes';
-import type { AppState } from '@/lib/remoteState';
+import type { AppState, QueuedComment } from '@/lib/remoteState';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -87,6 +87,10 @@ export default function Home() {
     chatHistory: true,
     chatInput: false,
   });
+
+  // コメントキュー（わんコメから受信したコメントを蓄積、LLMへの送信は手動）
+  // @see .kiro/specs/comment-queue-control/design.md
+  const [commentQueue, setCommentQueue] = useState<QueuedComment[]>([]);
 
   // リモート同期の有効化フラグ（クエリパラメータで制御）
   const [isRemoteSyncEnabled, setIsRemoteSyncEnabled] = useState(false);
@@ -492,14 +496,15 @@ export default function Home() {
   );
 
   // わんコメからコメントを受信した時の処理
+  // @see .kiro/specs/comment-queue-control/design.md
+  // @requirements 1.1, 1.4, 2.1, 2.2, 2.3 - LLMへの自動送信を停止し、キューに追加のみ行う
   const handleOneCommeComment = useCallback(
-    async (comment: { name: string; comment: string; profileImage?: string }) => {
-      if (isLoading) return;
-
+    (comment: { id?: string; name: string; comment: string; profileImage?: string }) => {
       const messageContent = comment.comment.trim();
       if (!messageContent) return;
 
-      // コメントをユーザーメッセージとして表示
+      // コメントをユーザーメッセージとして表示（メイン画面のチャット履歴）
+      // @requirements 2.2 - メイン画面のライブチャットに通常通り表示
       const userMessage: Message = {
         role: 'user',
         content: messageContent,
@@ -507,48 +512,23 @@ export default function Home() {
         profileImage: comment.profileImage,
       };
       setMessages((prev) => [...prev, userMessage]);
-      setIsLoading(true);
 
-      try {
-        // ワークフローAPI用にsessionId, username, commentを分けて送信
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId,
-            username: comment.name,
-            comment: messageContent,
-          }),
-        });
+      // コメントをキューに追加（新しいものを先頭に）
+      // @requirements 1.1, 1.4, 2.3 - キューに追加、新しいコメントを上部に
+      const queuedComment: QueuedComment = {
+        id: comment.id || `onecomme-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        name: comment.name,
+        comment: messageContent,
+        profileImage: comment.profileImage,
+        receivedAt: Date.now(),
+        isSent: false,
+      };
+      setCommentQueue((prev) => [queuedComment, ...prev]);
 
-        if (!response.ok) throw new Error('Failed to send message');
-
-        const data = await response.json();
-
-        // shouldRespond: false の場合は応答なし
-        if (data.shouldRespond === false) {
-          // ユーザーメッセージは表示済みなので、応答なしで終了
-          setMessages((prev) => prev.slice(0, -1)); // ユーザーメッセージも削除
-          return;
-        }
-
-        const assistantMessage: Message = {
-          role: 'assistant',
-          content: data.message,
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
-      } catch (error) {
-        console.error('Error processing OneComme comment:', error);
-        const errorMessage: Message = {
-          role: 'assistant',
-          content: 'エラーが発生しました。',
-        };
-        setMessages((prev) => [...prev, errorMessage]);
-      } finally {
-        setIsLoading(false);
-      }
+      // LLMへの自動送信は行わない
+      // @requirements 2.1 - LLMサーバーへの自動送信を行わない
     },
-    [sessionId, isLoading]
+    []
   );
 
   // わんコメ連携フック
@@ -584,6 +564,80 @@ export default function Home() {
     setUIVisibility(prev => ({ ...prev, [target]: visible }));
   }, []);
 
+  // キューからコメントをLLMに送信
+  // @see .kiro/specs/comment-queue-control/design.md
+  // @requirements 3.1, 3.3, 4.1 - 指定されたコメントをLLMサーバーに送信
+  const handleSendQueuedComment = useCallback(
+    async (commentId: string) => {
+      // キューから該当コメントを探す
+      const targetComment = commentQueue.find((c) => c.id === commentId);
+      if (!targetComment) {
+        console.warn(`[handleSendQueuedComment] コメントが見つかりません: ${commentId}`);
+        return;
+      }
+
+      // 既に送信済みの場合は無視
+      if (targetComment.isSent) {
+        console.warn(`[handleSendQueuedComment] 既に送信済み: ${commentId}`);
+        return;
+      }
+
+      // ローディング中の場合は処理しない
+      if (isLoading) {
+        console.warn(`[handleSendQueuedComment] ローディング中のためスキップ: ${commentId}`);
+        return;
+      }
+
+      setIsLoading(true);
+
+      try {
+        // LLMサーバーにコメントを送信
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId,
+            username: targetComment.name,
+            comment: targetComment.comment,
+          }),
+        });
+
+        if (!response.ok) throw new Error('Failed to send message');
+
+        const data = await response.json();
+
+        // 送信済みとしてマーク
+        // @requirements 4.1 - 送信完了後にキュー内のコメントを送信済みに更新
+        setCommentQueue((prev) =>
+          prev.map((c) => (c.id === commentId ? { ...c, isSent: true } : c))
+        );
+
+        // shouldRespond: false の場合は応答なし
+        if (data.shouldRespond === false) {
+          return;
+        }
+
+        // アシスタントのメッセージを追加
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: data.message,
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+      } catch (error) {
+        console.error('[handleSendQueuedComment] エラー:', error);
+        // エラー時は送信済みにしない
+        const errorMessage: Message = {
+          role: 'assistant',
+          content: 'エラーが発生しました。',
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [commentQueue, sessionId, isLoading]
+  );
+
   // メイン画面用SSE同期フック
   // @requirements 4.1 - リモートからのコマンドを受信して状態を更新
   const { isConnected: isRemoteConnected, reportState } = useMainScreenSync({
@@ -593,10 +647,12 @@ export default function Home() {
     onUIVisibilityChange: handleRemoteUIVisibilityChange,
     onSendScript: handleRemoteSendScript,
     onSendMessage: handleRemoteSendMessage,
+    onSendQueuedComment: handleSendQueuedComment,
   });
 
   // 状態変更時にリモートに報告
   // @requirements 2.5, 4.2, 4.3 - メイン画面の状態をリモートに報告
+  // @see .kiro/specs/comment-queue-control/design.md - コメントキュー状態の同期
   const lastReportedStateRef = useRef<string | null>(null);
   useEffect(() => {
     if (!isRemoteSyncEnabled || !isRemoteConnected) return;
@@ -611,6 +667,7 @@ export default function Home() {
       oneCommeConnected,
       isScriptSending,
       uiVisibility,
+      commentQueue,
     };
 
     const stateString = JSON.stringify(currentState);
@@ -632,6 +689,7 @@ export default function Home() {
     oneCommeConnected,
     isScriptSending,
     uiVisibility,
+    commentQueue,
     reportState,
   ]);
 

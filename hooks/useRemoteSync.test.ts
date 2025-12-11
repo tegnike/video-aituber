@@ -26,6 +26,7 @@ describe('useRemoteSync（ポーリング方式）', () => {
       chatHistory: true,
       chatInput: true,
     },
+    commentQueue: [],
   };
 
   beforeEach(() => {

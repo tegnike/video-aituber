@@ -328,6 +328,59 @@ describe('useMainScreenSync (Polling)', () => {
         await vi.advanceTimersByTimeAsync(0);
       });
     });
+
+    it('sendQueuedCommentコマンドでonSendQueuedCommentコールバックを呼び出す', async () => {
+      const { useMainScreenSync } = await import('./useMainScreenSync');
+      const { renderHook, act } = await import('@testing-library/react');
+      const onSendQueuedComment = vi.fn();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          commands: [{ type: 'sendQueuedComment', commentId: 'comment-123' }],
+        }),
+      });
+
+      renderHook(() => useMainScreenSync({
+        onSelectMode: vi.fn(),
+        onControlVideo: vi.fn(),
+        onToggleOneComme: vi.fn(),
+        onUIVisibilityChange: vi.fn(),
+        onSendQueuedComment,
+      }));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(onSendQueuedComment).toHaveBeenCalledWith('comment-123');
+    });
+
+    it('onSendQueuedCommentが未設定でもエラーにならない', async () => {
+      const { useMainScreenSync } = await import('./useMainScreenSync');
+      const { renderHook, act } = await import('@testing-library/react');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          commands: [{ type: 'sendQueuedComment', commentId: 'comment-456' }],
+        }),
+      });
+
+      // onSendQueuedCommentを設定せずにhookを使用
+      expect(() => {
+        renderHook(() => useMainScreenSync({
+          onSelectMode: vi.fn(),
+          onControlVideo: vi.fn(),
+          onToggleOneComme: vi.fn(),
+          onUIVisibilityChange: vi.fn(),
+        }));
+      }).not.toThrow();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    });
   });
 
   describe('状態報告', () => {
@@ -365,6 +418,7 @@ describe('useMainScreenSync (Polling)', () => {
           chatHistory: true,
           chatInput: true,
         },
+        commentQueue: [],
       };
 
       await act(async () => {

@@ -17,6 +17,7 @@ export interface UseMainScreenSyncOptions {
   onUIVisibilityChange: (target: 'controls' | 'chatHistory' | 'chatInput', visible: boolean) => void;
   onSendScript?: (script: Script) => void;
   onSendMessage?: (message: string, username: string) => void;
+  onSendQueuedComment?: (commentId: string) => void;
 }
 
 export interface UseMainScreenSyncReturn {
@@ -57,6 +58,9 @@ export function useMainScreenSync(options: UseMainScreenSyncOptions): UseMainScr
         break;
       case 'sendMessage':
         callbacksRef.current.onSendMessage?.(command.message, command.username);
+        break;
+      case 'sendQueuedComment':
+        callbacksRef.current.onSendQueuedComment?.(command.commentId);
         break;
     }
   }, []);

@@ -38,6 +38,7 @@ describe('RemoteControlPage', () => {
       chatHistory: true,
       chatInput: true,
     },
+    commentQueue: [],
     ...overrides,
   });
 
@@ -361,6 +362,81 @@ describe('RemoteControlPage', () => {
       expect(screen.getByText('台本', { selector: 'h2' })).toBeInTheDocument();
       expect(screen.getByText('自動送信', { selector: 'h2' })).toBeInTheDocument();
       expect(screen.getByText('メッセージ送信')).toBeInTheDocument();
+    });
+  });
+
+  describe('コメントキューパネル統合 (comment-queue-control 3.3)', () => {
+    it('コメントキューパネルが表示される', () => {
+      mockUseRemoteSync.mockReturnValue({
+        state: createMockState({ hasStarted: true }),
+        isConnected: true,
+        error: null,
+        sendCommand: mockSendCommand,
+      });
+
+      render(<RemoteControlPage />);
+
+      expect(screen.getByText('コメントキュー')).toBeInTheDocument();
+    });
+
+    it('コメントキューの内容を表示する', () => {
+      mockUseRemoteSync.mockReturnValue({
+        state: createMockState({
+          hasStarted: true,
+          commentQueue: [
+            {
+              id: 'comment-1',
+              name: 'テストユーザー',
+              comment: 'テストコメント',
+              receivedAt: Date.now(),
+              isSent: false,
+            },
+          ],
+        }),
+        isConnected: true,
+        error: null,
+        sendCommand: mockSendCommand,
+      });
+
+      render(<RemoteControlPage />);
+
+      expect(screen.getByText('テストユーザー')).toBeInTheDocument();
+      expect(screen.getByText('テストコメント')).toBeInTheDocument();
+    });
+
+    it('送信ボタンクリックでsendQueuedCommentコマンドを送信', async () => {
+      mockUseRemoteSync.mockReturnValue({
+        state: createMockState({
+          hasStarted: true,
+          commentQueue: [
+            {
+              id: 'comment-1',
+              name: 'キューユーザー',
+              comment: 'キューコメント',
+              receivedAt: Date.now(),
+              isSent: false,
+            },
+          ],
+        }),
+        isConnected: true,
+        error: null,
+        sendCommand: mockSendCommand,
+      });
+
+      render(<RemoteControlPage />);
+
+      // コメントキューパネル内の送信ボタンを探す
+      const commentItem = screen.getByText('キューコメント').closest('[data-testid="comment-item"]');
+      const sendButton = commentItem?.querySelector('button');
+      expect(sendButton).not.toBeNull();
+      fireEvent.click(sendButton!);
+
+      await waitFor(() => {
+        expect(mockSendCommand).toHaveBeenCalledWith({
+          type: 'sendQueuedComment',
+          commentId: 'comment-1',
+        });
+      });
     });
   });
 });
