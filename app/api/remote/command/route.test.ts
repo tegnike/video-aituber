@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { POST } from './route';
-import { resetAppState, getAppState, subscribeCommand, type RemoteCommand } from '@/lib/remoteState';
+import { resetAppState, getAppState, type RemoteCommand } from '@/lib/remoteState';
+import { clearCommandQueue, dequeueAllCommands } from '@/lib/commandQueue';
 
 describe('/api/remote/command', () => {
   beforeEach(() => {
     resetAppState();
+    clearCommandQueue();
   });
 
   describe('selectMode コマンド', () => {
@@ -147,7 +149,7 @@ describe('/api/remote/command', () => {
       const request = new Request('http://localhost/api/remote/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'sendScript', scriptId: 'test-script-1' }),
+        body: JSON.stringify({ type: 'sendScript', script: { id: 'test-script-1', text: 'テスト台本' } }),
       });
 
       const response = await POST(request);
@@ -155,7 +157,7 @@ describe('/api/remote/command', () => {
 
       expect(response.status).toBe(200);
       expect(json.success).toBe(true);
-      expect(json.command.scriptId).toBe('test-script-1');
+      expect(json.command.script.id).toBe('test-script-1');
     });
   });
 
@@ -194,13 +196,8 @@ describe('/api/remote/command', () => {
     });
   });
 
-  describe('コマンド配信', () => {
-    it('コマンド処理時にbroadcastCommandが呼ばれる', async () => {
-      const commands: RemoteCommand[] = [];
-      const unsubscribe = subscribeCommand((cmd) => {
-        commands.push(cmd);
-      });
-
+  describe('コマンドキューへの追加', () => {
+    it('コマンド処理時にコマンドキューに追加される', async () => {
       const request = new Request('http://localhost/api/remote/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -208,8 +205,8 @@ describe('/api/remote/command', () => {
       });
 
       await POST(request);
-      unsubscribe();
 
+      const commands = dequeueAllCommands();
       expect(commands.length).toBe(1);
       expect(commands[0]).toEqual({ type: 'controlVideo', action: 'start' });
     });

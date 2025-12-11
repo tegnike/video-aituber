@@ -11,53 +11,7 @@ import type { AppState } from '@/lib/remoteState';
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-// EventSourceをモック
-class MockEventSource {
-  static instances: MockEventSource[] = [];
-  onopen: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  onmessage: ((event: MessageEvent) => void) | null = null;
-  readyState = 0; // CONNECTING
-  url: string;
-
-  constructor(url: string) {
-    this.url = url;
-    MockEventSource.instances.push(this);
-  }
-
-  addEventListener(type: string, listener: (event: MessageEvent) => void) {
-    if (type === 'state-update' || type === 'command-received') {
-      // イベントリスナーを保存
-      (this as unknown as Record<string, (event: MessageEvent) => void>)[`_${type}`] = listener;
-    }
-  }
-
-  close() {
-    this.readyState = 2; // CLOSED
-  }
-
-  // テスト用：接続を開く
-  simulateOpen() {
-    this.readyState = 1; // OPEN
-    this.onopen?.();
-  }
-
-  // テスト用：状態更新イベントを送信
-  simulateStateUpdate(state: AppState) {
-    const listener = (this as unknown as Record<string, (event: MessageEvent) => void>)['_state-update'];
-    listener?.({ data: JSON.stringify(state) } as MessageEvent);
-  }
-
-  // テスト用：エラーを発生
-  simulateError() {
-    this.readyState = 2; // CLOSED
-    this.onerror?.();
-  }
-}
-
-global.EventSource = MockEventSource as unknown as typeof EventSource;
-
-describe('useRemoteSync', () => {
+describe('useRemoteSync（ポーリング方式）', () => {
   const initialState: AppState = {
     hasStarted: false,
     screenMode: null,
@@ -75,7 +29,6 @@ describe('useRemoteSync', () => {
   };
 
   beforeEach(() => {
-    MockEventSource.instances = [];
     mockFetch.mockReset();
     vi.useFakeTimers();
   });
@@ -84,7 +37,7 @@ describe('useRemoteSync', () => {
     vi.useRealTimers();
   });
 
-  describe('接続管理', () => {
+  describe('ポーリング接続管理', () => {
     it('初期状態ではisConnectedがfalse', () => {
       const { result } = renderHook(() => useRemoteSync());
 
@@ -93,82 +46,162 @@ describe('useRemoteSync', () => {
       expect(result.current.error).toBeNull();
     });
 
-    it('SSE接続成功時にisConnectedがtrueになる', async () => {
+    it('初回ポーリング成功時にisConnectedがtrueになりstateが設定される', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(initialState),
+      });
+
       const { result } = renderHook(() => useRemoteSync());
 
-      const eventSource = MockEventSource.instances[0];
-      act(() => {
-        eventSource.simulateOpen();
+      // 初回ポーリングを実行
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
       });
 
       expect(result.current.isConnected).toBe(true);
+      expect(result.current.state).toEqual(initialState);
+      expect(result.current.error).toBeNull();
     });
 
-    it('状態更新イベント受信時にstateが更新される', async () => {
+    it('500ms間隔でポーリングが実行される', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(initialState),
+      });
+
       const { result } = renderHook(() => useRemoteSync());
 
-      const eventSource = MockEventSource.instances[0];
-      act(() => {
-        eventSource.simulateOpen();
+      // 初回ポーリング
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
       });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
 
-      const newState: AppState = { ...initialState, hasStarted: true, screenMode: 'standby' };
-      act(() => {
-        eventSource.simulateStateUpdate(newState);
+      // 500ms後に2回目
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
       });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
 
+      // さらに500ms後に3回目
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+    });
+
+    it('状態更新がポーリングで反映される', async () => {
+      const updatedState: AppState = { ...initialState, hasStarted: true, screenMode: 'room' };
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(initialState),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(updatedState),
+        });
+
+      const { result } = renderHook(() => useRemoteSync());
+
+      // 初回ポーリング
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.state?.hasStarted).toBe(false);
+
+      // 2回目のポーリング
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
       expect(result.current.state?.hasStarted).toBe(true);
-      expect(result.current.state?.screenMode).toBe('standby');
+      expect(result.current.state?.screenMode).toBe('room');
     });
 
-    it('SSE接続エラー時にerrorが設定される', async () => {
+    it('ポーリング失敗時にisConnectedがfalseになりerrorが設定される', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
       const { result } = renderHook(() => useRemoteSync());
 
-      const eventSource = MockEventSource.instances[0];
-      act(() => {
-        eventSource.simulateError();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
       });
 
       expect(result.current.isConnected).toBe(false);
       expect(result.current.error).not.toBeNull();
     });
 
-    it('自動再接続が3秒後に試行される', async () => {
+    it('ポーリング失敗後も次のポーリングで再試行される', async () => {
+      mockFetch
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(initialState),
+        });
+
       const { result } = renderHook(() => useRemoteSync());
 
-      const eventSource = MockEventSource.instances[0];
-      act(() => {
-        eventSource.simulateError();
+      // 初回ポーリング（失敗）
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
       });
+      expect(result.current.isConnected).toBe(false);
+      expect(result.current.error).not.toBeNull();
 
-      expect(MockEventSource.instances.length).toBe(1);
-
-      // 3秒後に再接続
-      act(() => {
-        vi.advanceTimersByTime(3000);
+      // 2回目のポーリング（成功）
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
       });
-
-      expect(MockEventSource.instances.length).toBe(2);
+      expect(result.current.isConnected).toBe(true);
+      expect(result.current.error).toBeNull();
     });
 
-    it('アンマウント時にSSE接続がクローズされる', () => {
+    it('アンマウント時にポーリングが停止される', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(initialState),
+      });
+
       const { unmount } = renderHook(() => useRemoteSync());
 
-      const eventSource = MockEventSource.instances[0];
+      // 初回ポーリング
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
       unmount();
 
-      expect(eventSource.readyState).toBe(2); // CLOSED
+      // アンマウント後はポーリングが発生しない
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('sendCommand', () => {
     it('コマンドを送信できる', async () => {
+      // ポーリング用のモック
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(initialState),
+      });
+
+      const { result } = renderHook(() => useRemoteSync());
+
+      // ポーリングを停止してから送信テスト
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      mockFetch.mockClear();
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ success: true }),
       });
-
-      const { result } = renderHook(() => useRemoteSync());
 
       await act(async () => {
         await result.current.sendCommand({ type: 'controlVideo', action: 'start' });
@@ -182,18 +215,90 @@ describe('useRemoteSync', () => {
     });
 
     it('コマンド送信失敗時にエラーを投げる', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 400,
+      // ポーリング用のモック
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(initialState),
       });
 
       const { result } = renderHook(() => useRemoteSync());
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      mockFetch.mockClear();
+      // 3回分失敗を設定（リトライ対応）
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 400,
+      });
 
       await expect(
         act(async () => {
           await result.current.sendCommand({ type: 'controlVideo', action: 'start' });
         })
       ).rejects.toThrow();
+    });
+
+    it('コマンド送信失敗時に自動リトライされる', async () => {
+      // ポーリング用のモック
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(initialState),
+      });
+
+      const { result } = renderHook(() => useRemoteSync());
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      mockFetch.mockClear();
+      mockFetch
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: true }),
+        });
+
+      await act(async () => {
+        await result.current.sendCommand({ type: 'controlVideo', action: 'start' });
+      });
+
+      // 2回呼ばれている（1回目失敗、2回目成功）
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('コマンド送信が最大3回まで再試行される', async () => {
+      // ポーリング用のモック
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(initialState),
+      });
+
+      const { result, unmount } = renderHook(() => useRemoteSync());
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      // ポーリングを停止
+      unmount();
+
+      mockFetch.mockClear();
+      // 3回分のネットワークエラーを個別に設定
+      mockFetch
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockRejectedValueOnce(new Error('Network error'));
+
+      // unmount後もsendCommandは呼べるのでキャプチャ済みの関数を呼ぶ
+      const sendCommand = result.current.sendCommand;
+      await expect(sendCommand({ type: 'controlVideo', action: 'start' })).rejects.toThrow();
+
+      // 3回試行（1回目 + 2回リトライ）
+      expect(mockFetch).toHaveBeenCalledTimes(3);
     });
   });
 });

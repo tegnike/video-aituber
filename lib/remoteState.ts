@@ -69,7 +69,7 @@ export const subscribe = (subscriber: Subscriber): (() => void) => {
   };
 };
 
-// コマンド購読機能
+// コマンド型定義
 import type { Script } from '@/lib/scriptTypes';
 
 export type RemoteCommand =
@@ -78,19 +78,3 @@ export type RemoteCommand =
   | { type: 'sendScript'; script: Script }
   | { type: 'toggleOneComme'; enabled: boolean }
   | { type: 'setUIVisibility'; target: 'controls' | 'chatHistory' | 'chatInput'; visible: boolean };
-
-type CommandSubscriber = (command: RemoteCommand) => void;
-const commandSubscribers: Set<CommandSubscriber> = new Set();
-
-export const subscribeCommand = (subscriber: CommandSubscriber): (() => void) => {
-  commandSubscribers.add(subscriber);
-  return () => {
-    commandSubscribers.delete(subscriber);
-  };
-};
-
-export const broadcastCommand = (command: RemoteCommand): void => {
-  commandSubscribers.forEach((subscriber) => {
-    subscriber(command);
-  });
-};

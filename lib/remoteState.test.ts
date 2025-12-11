@@ -4,10 +4,7 @@ import {
   updateAppState,
   resetAppState,
   subscribe,
-  subscribeCommand,
-  broadcastCommand,
   type AppState,
-  type RemoteCommand,
 } from './remoteState';
 
 describe('remoteState', () => {
@@ -121,33 +118,4 @@ describe('remoteState', () => {
     });
   });
 
-  describe('subscribeCommand / broadcastCommand', () => {
-    it('コマンド配信時にサブスクライバーが呼ばれる', () => {
-      const commands: RemoteCommand[] = [];
-      const unsubscribe = subscribeCommand((cmd) => {
-        commands.push(cmd);
-      });
-
-      const command: RemoteCommand = { type: 'controlVideo', action: 'start' };
-      broadcastCommand(command);
-
-      expect(commands.length).toBe(1);
-      expect(commands[0]).toEqual(command);
-
-      unsubscribe();
-    });
-
-    it('unsubscribe後はサブスクライバーが呼ばれない', () => {
-      const commands: RemoteCommand[] = [];
-      const unsubscribe = subscribeCommand((cmd) => {
-        commands.push(cmd);
-      });
-
-      broadcastCommand({ type: 'controlVideo', action: 'start' });
-      unsubscribe();
-      broadcastCommand({ type: 'controlVideo', action: 'end' });
-
-      expect(commands.length).toBe(1);
-    });
-  });
 });

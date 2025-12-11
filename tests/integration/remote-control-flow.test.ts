@@ -17,14 +17,15 @@ import {
   getAppState,
   updateAppState,
   subscribe,
-  subscribeCommand,
   type RemoteCommand,
   type AppState,
 } from '@/lib/remoteState';
+import { clearCommandQueue, dequeueAllCommands } from '@/lib/commandQueue';
 
 describe('リモート操作フロー統合テスト', () => {
   beforeEach(() => {
     resetAppState();
+    clearCommandQueue();
   });
 
   describe('開始/終了ボタン操作フロー (Requirements 2.1, 2.2)', () => {
@@ -44,12 +45,7 @@ describe('リモート操作フロー統合テスト', () => {
       expect(state.controlVideoType).toBe('start');
     });
 
-    it('コマンド送信時にコマンド購読者が通知を受け取る', async () => {
-      const receivedCommands: RemoteCommand[] = [];
-      const unsubscribe = subscribeCommand((cmd) => {
-        receivedCommands.push(cmd);
-      });
-
+    it('コマンド送信時にコマンドキューに追加される', async () => {
       const request = new Request('http://localhost/api/remote/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -57,11 +53,11 @@ describe('リモート操作フロー統合テスト', () => {
       });
 
       await commandPOST(request);
-      unsubscribe();
 
-      // メイン画面がコマンドを受信できることを確認
-      expect(receivedCommands.length).toBe(1);
-      expect(receivedCommands[0]).toEqual({ type: 'controlVideo', action: 'start' });
+      // コマンドキューからコマンドを取得できることを確認
+      const commands = dequeueAllCommands();
+      expect(commands.length).toBe(1);
+      expect(commands[0]).toEqual({ type: 'controlVideo', action: 'start' });
     });
 
     it('リモートパネルから終了コマンド送信 → 状態が更新される', async () => {
@@ -116,7 +112,7 @@ describe('リモート操作フロー統合テスト', () => {
       const request = new Request('http://localhost/api/remote/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'sendScript', scriptId: 'test-script-123' }),
+        body: JSON.stringify({ type: 'sendScript', script: { id: 'test-script-123', text: 'テスト台本' } }),
       });
 
       const response = await commandPOST(request);
@@ -126,23 +122,18 @@ describe('リモート操作フロー統合テスト', () => {
       expect(state.isScriptSending).toBe(true);
     });
 
-    it('台本送信コマンドがメイン画面に配信される', async () => {
-      const receivedCommands: RemoteCommand[] = [];
-      const unsubscribe = subscribeCommand((cmd) => {
-        receivedCommands.push(cmd);
-      });
-
+    it('台本送信コマンドがコマンドキューに追加される', async () => {
       const request = new Request('http://localhost/api/remote/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'sendScript', scriptId: 'test-script-456' }),
+        body: JSON.stringify({ type: 'sendScript', script: { id: 'test-script-456', text: 'テスト台本' } }),
       });
 
       await commandPOST(request);
-      unsubscribe();
 
-      expect(receivedCommands.length).toBe(1);
-      expect(receivedCommands[0]).toEqual({ type: 'sendScript', scriptId: 'test-script-456' });
+      const commands = dequeueAllCommands();
+      expect(commands.length).toBe(1);
+      expect(commands[0]).toEqual({ type: 'sendScript', script: { id: 'test-script-456', text: 'テスト台本' } });
     });
 
     it('台本送信後、動画生成完了状態を報告できる', async () => {
@@ -151,7 +142,7 @@ describe('リモート操作フロー統合テスト', () => {
         new Request('http://localhost/api/remote/command', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'sendScript', scriptId: 'script-1' }),
+          body: JSON.stringify({ type: 'sendScript', script: { id: 'script-1', text: 'テスト台本' } }),
         })
       );
 
@@ -181,11 +172,6 @@ describe('リモート操作フロー統合テスト', () => {
 
   describe('わんコメ連携切替フロー (Requirement 2.4)', () => {
     it('リモートパネルからわんコメON → メイン画面に反映', async () => {
-      const receivedCommands: RemoteCommand[] = [];
-      const unsubscribe = subscribeCommand((cmd) => {
-        receivedCommands.push(cmd);
-      });
-
       const request = new Request('http://localhost/api/remote/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -193,7 +179,6 @@ describe('リモート操作フロー統合テスト', () => {
       });
 
       const response = await commandPOST(request);
-      unsubscribe();
 
       expect(response.status).toBe(200);
 
@@ -201,9 +186,10 @@ describe('リモート操作フロー統合テスト', () => {
       const state = getAppState();
       expect(state.oneCommeEnabled).toBe(true);
 
-      // コマンドがメイン画面に配信されていることを確認
-      expect(receivedCommands.length).toBe(1);
-      expect(receivedCommands[0]).toEqual({ type: 'toggleOneComme', enabled: true });
+      // コマンドキューに追加されていることを確認
+      const commands = dequeueAllCommands();
+      expect(commands.length).toBe(1);
+      expect(commands[0]).toEqual({ type: 'toggleOneComme', enabled: true });
     });
 
     it('リモートパネルからわんコメOFF → メイン画面に反映', async () => {
@@ -263,11 +249,6 @@ describe('リモート操作フロー統合テスト', () => {
 
   describe('画面モード選択フロー (Requirements 3.1, 3.2)', () => {
     it('リモートパネルから待機画面選択 → メイン画面に反映', async () => {
-      const receivedCommands: RemoteCommand[] = [];
-      const unsubscribe = subscribeCommand((cmd) => {
-        receivedCommands.push(cmd);
-      });
-
       const request = new Request('http://localhost/api/remote/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -275,7 +256,6 @@ describe('リモート操作フロー統合テスト', () => {
       });
 
       const response = await commandPOST(request);
-      unsubscribe();
 
       expect(response.status).toBe(200);
 
@@ -283,8 +263,9 @@ describe('リモート操作フロー統合テスト', () => {
       expect(state.screenMode).toBe('standby');
       expect(state.hasStarted).toBe(true);
 
-      // コマンドが配信されていることを確認
-      expect(receivedCommands[0]).toEqual({ type: 'selectMode', mode: 'standby' });
+      // コマンドキューに追加されていることを確認
+      const commands = dequeueAllCommands();
+      expect(commands[0]).toEqual({ type: 'selectMode', mode: 'standby' });
     });
 
     it('リモートパネルから初期画面選択 → メイン画面に反映', async () => {
@@ -305,11 +286,6 @@ describe('リモート操作フロー統合テスト', () => {
 
   describe('UI表示切替フロー (Requirements 5.1, 5.2, 5.3)', () => {
     it('リモートパネルからコントロール非表示 → メイン画面に反映', async () => {
-      const receivedCommands: RemoteCommand[] = [];
-      const unsubscribe = subscribeCommand((cmd) => {
-        receivedCommands.push(cmd);
-      });
-
       const request = new Request('http://localhost/api/remote/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -317,15 +293,15 @@ describe('リモート操作フロー統合テスト', () => {
       });
 
       const response = await commandPOST(request);
-      unsubscribe();
 
       expect(response.status).toBe(200);
 
       const state = getAppState();
       expect(state.uiVisibility.controls).toBe(false);
 
-      // コマンドが配信されていることを確認
-      expect(receivedCommands[0]).toEqual({
+      // コマンドキューに追加されていることを確認
+      const commands = dequeueAllCommands();
+      expect(commands[0]).toEqual({
         type: 'setUIVisibility',
         target: 'controls',
         visible: false,
@@ -393,38 +369,29 @@ describe('リモート操作フロー統合テスト', () => {
 
   describe('台本自動送信フロー (Requirement 5.4)', () => {
     it('自動送信中でも手動台本送信が可能（独立動作）', async () => {
-      const receivedCommands: RemoteCommand[] = [];
-      const unsubscribe = subscribeCommand((cmd) => {
-        receivedCommands.push(cmd);
-      });
-
       // 手動で台本送信
       const request = new Request('http://localhost/api/remote/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'sendScript', scriptId: 'manual-script-1' }),
+        body: JSON.stringify({ type: 'sendScript', script: { id: 'manual-script-1', text: 'テスト台本' } }),
       });
 
       const response = await commandPOST(request);
-      unsubscribe();
 
       expect(response.status).toBe(200);
-      expect(receivedCommands.length).toBe(1);
-      expect(receivedCommands[0]).toEqual({ type: 'sendScript', scriptId: 'manual-script-1' });
+
+      const commands = dequeueAllCommands();
+      expect(commands.length).toBe(1);
+      expect(commands[0]).toEqual({ type: 'sendScript', script: { id: 'manual-script-1', text: 'テスト台本' } });
     });
 
     it('複数の台本を順次送信できる', async () => {
-      const receivedCommands: RemoteCommand[] = [];
-      const unsubscribe = subscribeCommand((cmd) => {
-        receivedCommands.push(cmd);
-      });
-
       // 台本1送信
       await commandPOST(
         new Request('http://localhost/api/remote/command', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'sendScript', scriptId: 'script-1' }),
+          body: JSON.stringify({ type: 'sendScript', script: { id: 'script-1', text: 'テスト台本1' } }),
         })
       );
 
@@ -452,25 +419,19 @@ describe('リモート操作フロー統合テスト', () => {
         new Request('http://localhost/api/remote/command', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'sendScript', scriptId: 'script-2' }),
+          body: JSON.stringify({ type: 'sendScript', script: { id: 'script-2', text: 'テスト台本2' } }),
         })
       );
 
-      unsubscribe();
-
-      expect(receivedCommands.length).toBe(2);
-      expect(receivedCommands[0]).toEqual({ type: 'sendScript', scriptId: 'script-1' });
-      expect(receivedCommands[1]).toEqual({ type: 'sendScript', scriptId: 'script-2' });
+      const commands = dequeueAllCommands();
+      expect(commands.length).toBe(2);
+      expect(commands[0]).toEqual({ type: 'sendScript', script: { id: 'script-1', text: 'テスト台本1' } });
+      expect(commands[1]).toEqual({ type: 'sendScript', script: { id: 'script-2', text: 'テスト台本2' } });
     });
   });
 
   describe('操作フローの連携', () => {
     it('完全な配信開始フロー: モード選択 → 開始コマンド → 状態報告', async () => {
-      const receivedCommands: RemoteCommand[] = [];
-      const unsubscribe = subscribeCommand((cmd) => {
-        receivedCommands.push(cmd);
-      });
-
       // Step 1: モード選択
       await commandPOST(
         new Request('http://localhost/api/remote/command', {
@@ -513,12 +474,11 @@ describe('リモート操作フロー統合テスト', () => {
         })
       );
 
-      unsubscribe();
-
-      // 全てのコマンドが配信されたことを確認
-      expect(receivedCommands.length).toBe(2);
-      expect(receivedCommands[0].type).toBe('selectMode');
-      expect(receivedCommands[1].type).toBe('controlVideo');
+      // 全てのコマンドがキューに追加されたことを確認
+      const commands = dequeueAllCommands();
+      expect(commands.length).toBe(2);
+      expect(commands[0].type).toBe('selectMode');
+      expect(commands[1].type).toBe('controlVideo');
     });
   });
 });

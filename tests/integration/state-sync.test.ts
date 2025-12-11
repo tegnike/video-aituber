@@ -17,14 +17,15 @@ import {
   getAppState,
   updateAppState,
   subscribe,
-  subscribeCommand,
   type AppState,
   type RemoteCommand,
 } from '@/lib/remoteState';
+import { clearCommandQueue, dequeueAllCommands } from '@/lib/commandQueue';
 
 describe('状態同期検証テスト', () => {
   beforeEach(() => {
     resetAppState();
+    clearCommandQueue();
   });
 
   describe('状態購読と通知 (Requirement 3.3, 4.1)', () => {
@@ -234,11 +235,6 @@ describe('状態同期検証テスト', () => {
 
   describe('UI表示切替がメイン画面に反映 (Requirements 5.1, 5.2, 5.3)', () => {
     it('コントロール表示切替が状態に反映される', async () => {
-      const receivedCommands: RemoteCommand[] = [];
-      const unsub = subscribeCommand((cmd) => {
-        receivedCommands.push(cmd);
-      });
-
       // コントロール非表示
       await commandPOST(
         new Request('http://localhost/api/remote/command', {
@@ -248,14 +244,13 @@ describe('状態同期検証テスト', () => {
         })
       );
 
-      unsub();
-
       // 状態が更新されていることを確認
       expect(getAppState().uiVisibility.controls).toBe(false);
 
-      // コマンドがメイン画面に配信されていることを確認
-      expect(receivedCommands.length).toBe(1);
-      expect(receivedCommands[0]).toEqual({
+      // コマンドキューに追加されていることを確認
+      const commands = dequeueAllCommands();
+      expect(commands.length).toBe(1);
+      expect(commands[0]).toEqual({
         type: 'setUIVisibility',
         target: 'controls',
         visible: false,
@@ -263,11 +258,6 @@ describe('状態同期検証テスト', () => {
     });
 
     it('チャット履歴表示切替が状態に反映される', async () => {
-      const receivedCommands: RemoteCommand[] = [];
-      const unsub = subscribeCommand((cmd) => {
-        receivedCommands.push(cmd);
-      });
-
       // チャット履歴非表示
       await commandPOST(
         new Request('http://localhost/api/remote/command', {
@@ -277,10 +267,10 @@ describe('状態同期検証テスト', () => {
         })
       );
 
-      unsub();
-
       expect(getAppState().uiVisibility.chatHistory).toBe(false);
-      expect(receivedCommands[0]).toEqual({
+
+      const commands = dequeueAllCommands();
+      expect(commands[0]).toEqual({
         type: 'setUIVisibility',
         target: 'chatHistory',
         visible: false,
@@ -288,11 +278,6 @@ describe('状態同期検証テスト', () => {
     });
 
     it('チャット入力表示切替が状態に反映される', async () => {
-      const receivedCommands: RemoteCommand[] = [];
-      const unsub = subscribeCommand((cmd) => {
-        receivedCommands.push(cmd);
-      });
-
       // チャット入力非表示
       await commandPOST(
         new Request('http://localhost/api/remote/command', {
@@ -302,10 +287,10 @@ describe('状態同期検証テスト', () => {
         })
       );
 
-      unsub();
-
       expect(getAppState().uiVisibility.chatInput).toBe(false);
-      expect(receivedCommands[0]).toEqual({
+
+      const commands = dequeueAllCommands();
+      expect(commands[0]).toEqual({
         type: 'setUIVisibility',
         target: 'chatInput',
         visible: false,
@@ -399,14 +384,8 @@ describe('状態同期検証テスト', () => {
       expect(count3).toBe(2);
     });
 
-    it('コマンド購読者も独立して動作する', async () => {
-      const commands1: RemoteCommand[] = [];
-      const commands2: RemoteCommand[] = [];
-
-      const unsub1 = subscribeCommand((c) => commands1.push(c));
-      const unsub2 = subscribeCommand((c) => commands2.push(c));
-
-      // コマンド1を送信してからunsub2
+    it('コマンドキューに複数のコマンドが正しく追加される', async () => {
+      // コマンド1を送信
       await commandPOST(
         new Request('http://localhost/api/remote/command', {
           method: 'POST',
@@ -414,8 +393,6 @@ describe('状態同期検証テスト', () => {
           body: JSON.stringify({ type: 'controlVideo', action: 'start' }),
         })
       );
-
-      unsub2();
 
       // コマンド2を送信
       await commandPOST(
@@ -426,12 +403,11 @@ describe('状態同期検証テスト', () => {
         })
       );
 
-      unsub1();
-
-      // 購読者1は2回
-      expect(commands1.length).toBe(2);
-      // 購読者2は1回のみ
-      expect(commands2.length).toBe(1);
+      // 両方のコマンドがキューに追加されている
+      const commands = dequeueAllCommands();
+      expect(commands.length).toBe(2);
+      expect(commands[0]).toEqual({ type: 'controlVideo', action: 'start' });
+      expect(commands[1]).toEqual({ type: 'controlVideo', action: 'end' });
     });
   });
 

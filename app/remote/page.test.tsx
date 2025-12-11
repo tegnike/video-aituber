@@ -115,8 +115,11 @@ describe('RemoteControlPage', () => {
     });
   });
 
-  describe('3.2 画面モード選択UI', () => {
-    it('未開始時にモード選択ボタンを表示', () => {
+  describe('3.2 画面モード表示', () => {
+    // Note: 画面モード選択UIは削除され、待機画面が自動表示されるようになりました
+    // @see commit: ced9a2d feat: 画面モード選択の削除と待機画面の自動表示を実装
+
+    it('未開始時は「未開始」と表示', () => {
       mockUseRemoteSync.mockReturnValue({
         state: createMockState({ hasStarted: false }),
         isConnected: true,
@@ -126,28 +129,7 @@ describe('RemoteControlPage', () => {
 
       render(<RemoteControlPage />);
 
-      expect(screen.getByRole('button', { name: '待機画面' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: '初期画面' })).toBeInTheDocument();
-    });
-
-    it('モード選択時にselectModeコマンドを送信', async () => {
-      mockUseRemoteSync.mockReturnValue({
-        state: createMockState({ hasStarted: false }),
-        isConnected: true,
-        error: null,
-        sendCommand: mockSendCommand,
-      });
-
-      render(<RemoteControlPage />);
-
-      fireEvent.click(screen.getByRole('button', { name: '待機画面' }));
-
-      await waitFor(() => {
-        expect(mockSendCommand).toHaveBeenCalledWith({
-          type: 'selectMode',
-          mode: 'standby',
-        });
-      });
+      expect(screen.getByTestId('screen-mode')).toHaveTextContent('未開始');
     });
 
     it('開始済み時は現在のモードを表示', () => {
@@ -161,7 +143,19 @@ describe('RemoteControlPage', () => {
       render(<RemoteControlPage />);
 
       expect(screen.getByTestId('screen-mode')).toHaveTextContent('初期画面');
-      expect(screen.queryByRole('button', { name: '待機画面' })).not.toBeInTheDocument();
+    });
+
+    it('待機画面モード時は「待機画面」と表示', () => {
+      mockUseRemoteSync.mockReturnValue({
+        state: createMockState({ hasStarted: true, screenMode: 'standby' }),
+        isConnected: true,
+        error: null,
+        sendCommand: mockSendCommand,
+      });
+
+      render(<RemoteControlPage />);
+
+      expect(screen.getByTestId('screen-mode')).toHaveTextContent('待機画面');
     });
   });
 

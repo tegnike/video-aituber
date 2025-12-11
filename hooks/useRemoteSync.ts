@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * SSE接続管理フック - リアルタイム状態同期
- * @see .kiro/specs/remote-control-panel/design.md - useRemoteSync
+ * ポーリング方式の状態同期フック
+ * @see .kiro/specs/reliable-remote-control/design.md - useRemoteSyncPolling
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
@@ -15,87 +15,93 @@ export interface UseRemoteSyncReturn {
   sendCommand: (command: RemoteCommand) => Promise<void>;
 }
 
-const MAX_RETRY_COUNT = 5;
-const RETRY_DELAY_MS = 3000;
+const POLLING_INTERVAL_MS = 500;
+const MAX_RETRY_COUNT = 3;
 
 export function useRemoteSync(): UseRemoteSyncReturn {
   const [state, setState] = useState<AppState | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const retryCountRef = useRef(0);
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(false);
 
-  const connect = useCallback(() => {
-    // 既存の接続をクローズ
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
+  const pollState = useCallback(async () => {
+    if (!isMountedRef.current) return;
+
+    try {
+      const response = await fetch('/api/remote/state');
+      if (!response.ok) {
+        throw new Error(`状態取得に失敗しました: ${response.status}`);
+      }
+      const newState = await response.json() as AppState;
+
+      if (isMountedRef.current) {
+        setState(newState);
+        setIsConnected(true);
+        setError(null);
+      }
+    } catch (err) {
+      if (isMountedRef.current) {
+        setIsConnected(false);
+        setError(err instanceof Error ? err.message : '状態取得に失敗しました');
+      }
     }
 
-    const eventSource = new EventSource('/api/remote/events');
-    eventSourceRef.current = eventSource;
-
-    eventSource.onopen = () => {
-      setIsConnected(true);
-      setError(null);
-      retryCountRef.current = 0;
-    };
-
-    eventSource.onerror = () => {
-      setIsConnected(false);
-      setError('SSE接続が切断されました');
-      eventSource.close();
-
-      // 自動再接続
-      if (retryCountRef.current < MAX_RETRY_COUNT) {
-        retryCountRef.current++;
-        retryTimerRef.current = setTimeout(() => {
-          connect();
-        }, RETRY_DELAY_MS);
-      } else {
-        setError('再接続に失敗しました。ページをリロードしてください。');
-      }
-    };
-
-    eventSource.addEventListener('state-update', (event) => {
-      try {
-        const newState = JSON.parse(event.data) as AppState;
-        setState(newState);
-      } catch {
-        console.error('Failed to parse state-update event');
-      }
-    });
-
-    eventSource.addEventListener('command-received', (event) => {
-      // コマンド受信時の処理（必要に応じて拡張）
-      console.log('Command received:', event.data);
-    });
+    // 次のポーリングをスケジュール
+    if (isMountedRef.current) {
+      pollingTimerRef.current = setTimeout(pollState, POLLING_INTERVAL_MS);
+    }
   }, []);
 
   useEffect(() => {
-    connect();
+    isMountedRef.current = true;
+
+    // 初回ポーリングを即座に実行
+    pollState();
 
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-      if (retryTimerRef.current) {
-        clearTimeout(retryTimerRef.current);
+      isMountedRef.current = false;
+      if (pollingTimerRef.current) {
+        clearTimeout(pollingTimerRef.current);
       }
     };
-  }, [connect]);
+  }, [pollState]);
 
   const sendCommand = useCallback(async (command: RemoteCommand): Promise<void> => {
-    const response = await fetch('/api/remote/command', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(command),
-    });
+    let lastError: Error | null = null;
 
-    if (!response.ok) {
-      throw new Error(`コマンド送信に失敗しました: ${response.status}`);
+    for (let attempt = 0; attempt < MAX_RETRY_COUNT; attempt++) {
+      try {
+        const response = await fetch('/api/remote/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(command),
+        });
+
+        if (!response.ok) {
+          // HTTPエラーは即座に投げる（リトライしない）
+          throw new Error(`コマンド送信に失敗しました: ${response.status}`);
+        }
+
+        return; // 成功したら終了
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error('コマンド送信に失敗しました');
+
+        // HTTPエラー（response.okがfalse）の場合はリトライしない
+        if (lastError.message.includes('コマンド送信に失敗しました:')) {
+          throw lastError;
+        }
+
+        // ネットワークエラーの場合はリトライ（最後の試行以外）
+        if (attempt >= MAX_RETRY_COUNT - 1) {
+          throw lastError;
+        }
+      }
     }
+
+    // 全リトライ失敗時
+    throw lastError;
   }, []);
 
   return {

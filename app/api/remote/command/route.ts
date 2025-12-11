@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { updateAppState, getAppState, broadcastCommand, RemoteCommand } from '@/lib/remoteState';
+import { updateAppState, getAppState, RemoteCommand } from '@/lib/remoteState';
+import { enqueueCommand } from '@/lib/commandQueue';
 
 function isValidCommand(cmd: unknown): cmd is RemoteCommand {
   if (!cmd || typeof cmd !== 'object') return false;
@@ -64,8 +65,8 @@ export async function POST(request: Request) {
     }
   }
 
-  // SSE購読者にコマンドを配信
-  broadcastCommand(command);
+  // コマンドキューに追加（ポーリングで取得される）
+  enqueueCommand(command);
 
   return NextResponse.json({ success: true, command });
 }
