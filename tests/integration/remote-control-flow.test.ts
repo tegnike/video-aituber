@@ -391,6 +391,79 @@ describe('リモート操作フロー統合テスト', () => {
     });
   });
 
+  describe('台本自動送信フロー (Requirement 5.4)', () => {
+    it('自動送信中でも手動台本送信が可能（独立動作）', async () => {
+      const receivedCommands: RemoteCommand[] = [];
+      const unsubscribe = subscribeCommand((cmd) => {
+        receivedCommands.push(cmd);
+      });
+
+      // 手動で台本送信
+      const request = new Request('http://localhost/api/remote/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'sendScript', scriptId: 'manual-script-1' }),
+      });
+
+      const response = await commandPOST(request);
+      unsubscribe();
+
+      expect(response.status).toBe(200);
+      expect(receivedCommands.length).toBe(1);
+      expect(receivedCommands[0]).toEqual({ type: 'sendScript', scriptId: 'manual-script-1' });
+    });
+
+    it('複数の台本を順次送信できる', async () => {
+      const receivedCommands: RemoteCommand[] = [];
+      const unsubscribe = subscribeCommand((cmd) => {
+        receivedCommands.push(cmd);
+      });
+
+      // 台本1送信
+      await commandPOST(
+        new Request('http://localhost/api/remote/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'sendScript', scriptId: 'script-1' }),
+        })
+      );
+
+      // 送信完了報告
+      await statePOST(
+        new Request('http://localhost/api/remote/state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            hasStarted: true,
+            screenMode: 'room',
+            isLoadingBackground: false,
+            isLoadingControlVideo: false,
+            controlVideoType: null,
+            oneCommeEnabled: false,
+            oneCommeConnected: false,
+            isScriptSending: false,
+            uiVisibility: { controls: true, chatHistory: true, chatInput: true },
+          } as AppState),
+        })
+      );
+
+      // 台本2送信
+      await commandPOST(
+        new Request('http://localhost/api/remote/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'sendScript', scriptId: 'script-2' }),
+        })
+      );
+
+      unsubscribe();
+
+      expect(receivedCommands.length).toBe(2);
+      expect(receivedCommands[0]).toEqual({ type: 'sendScript', scriptId: 'script-1' });
+      expect(receivedCommands[1]).toEqual({ type: 'sendScript', scriptId: 'script-2' });
+    });
+  });
+
   describe('操作フローの連携', () => {
     it('完全な配信開始フロー: モード選択 → 開始コマンド → 状態報告', async () => {
       const receivedCommands: RemoteCommand[] = [];

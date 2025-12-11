@@ -99,3 +99,127 @@ export function parseScriptsConfig(data: unknown): {
 
   return { scripts: result, errors: parseErrors };
 }
+
+// ============================================
+// 自動送信機能用の型定義
+// ============================================
+
+/** 自動送信の状態 */
+export type AutoSenderStatus = 'idle' | 'running' | 'paused' | 'completed';
+
+/** シーケンスファイル形式 */
+export interface ScriptSequence {
+  /** シーケンス名（任意） */
+  name?: string;
+  /** 台本配列 */
+  scripts: Script[];
+  /** デフォルト送信間隔（秒） */
+  defaultInterval?: number;
+}
+
+/** デフォルトの送信間隔（秒） */
+export const DEFAULT_SEND_INTERVAL = 5;
+
+/** Hook の返却状態 */
+export interface AutoSenderState {
+  /** 現在のステータス */
+  status: AutoSenderStatus;
+  /** 読み込んだシーケンス */
+  sequence: ScriptSequence | null;
+  /** 現在の送信インデックス（0始まり） */
+  currentIndex: number;
+  /** 送信間隔（秒） */
+  interval: number;
+  /** エラーメッセージ */
+  error: string | null;
+}
+
+/** Hook の返却アクション */
+export interface AutoSenderActions {
+  /** シーケンスファイルを読み込む */
+  loadSequence: (file: File) => Promise<void>;
+  /** 自動送信を開始 */
+  start: () => void;
+  /** 一時停止 */
+  pause: () => void;
+  /** 再開 */
+  resume: () => void;
+  /** 停止（リセット） */
+  stop: () => void;
+  /** 送信間隔を設定（秒、最小0） */
+  setInterval: (seconds: number) => void;
+  /** シーケンスをクリア */
+  clearSequence: () => void;
+}
+
+/** シーケンスパース結果 */
+export interface ParseSequenceResult {
+  /** パースされたシーケンス（成功時） */
+  sequence: ScriptSequence | null;
+  /** エラーメッセージ（失敗時） */
+  error: string | null;
+}
+
+/**
+ * シーケンスファイルのJSONデータをパースしてバリデーションする
+ * @param data - JSONパース済みのデータ
+ * @returns パース結果（成功時はsequence、失敗時はerror）
+ */
+export function parseScriptSequence(data: unknown): ParseSequenceResult {
+  if (!data || typeof data !== 'object') {
+    return { sequence: null, error: '設定データはオブジェクトである必要があります' };
+  }
+
+  const config = data as Record<string, unknown>;
+
+  // scriptsプロパティの存在チェック
+  if (!('scripts' in config)) {
+    return { sequence: null, error: 'scriptsプロパティが見つかりません' };
+  }
+
+  if (!Array.isArray(config.scripts)) {
+    return { sequence: null, error: 'scripts は配列である必要があります' };
+  }
+
+  // 空配列チェック
+  if (config.scripts.length === 0) {
+    return { sequence: null, error: '台本が1件以上必要です' };
+  }
+
+  // 各台本のバリデーション
+  const validScripts: Script[] = [];
+  for (let i = 0; i < config.scripts.length; i++) {
+    const errors = validateScript(config.scripts[i]);
+    if (errors.length > 0) {
+      return { sequence: null, error: `${i + 1}番目の台本: ${errors.join(', ')}` };
+    }
+    validScripts.push(config.scripts[i] as Script);
+  }
+
+  // nameのバリデーション（任意、あれば文字列）
+  let name: string | undefined;
+  if ('name' in config && config.name !== undefined) {
+    if (typeof config.name !== 'string') {
+      return { sequence: null, error: 'name は文字列である必要があります' };
+    }
+    name = config.name;
+  }
+
+  // defaultIntervalのバリデーション（任意、あれば数値）
+  let defaultInterval: number | undefined;
+  if ('defaultInterval' in config && config.defaultInterval !== undefined) {
+    if (typeof config.defaultInterval !== 'number') {
+      return { sequence: null, error: 'defaultInterval は数値である必要があります' };
+    }
+    defaultInterval = Math.max(0, config.defaultInterval);
+  }
+
+  return {
+    sequence: {
+      name,
+      scripts: validScripts,
+      defaultInterval,
+    },
+    error: null,
+  };
+}

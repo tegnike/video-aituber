@@ -1,0 +1,17 @@
+{
+  "name": "配信オープニング",
+  "defaultInterval": 5,
+  "scripts": [
+    {
+      "id": "open-1",
+      "label": "挨拶",
+      "text": "こんにちは！今日も配信に来てくれてありがとう！",
+      "emotion": "happy"
+    },
+    {
+      "id": "open-2",
+      "label": "告知",
+      "text": "今日は新機能を紹介していきます！"
+    }
+  ]
+}

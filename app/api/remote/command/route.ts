@@ -1,12 +1,5 @@
 import { NextResponse } from 'next/server';
-import { updateAppState, getAppState, broadcastCommand } from '@/lib/remoteState';
-
-type RemoteCommand =
-  | { type: 'selectMode'; mode: 'standby' | 'room' }
-  | { type: 'controlVideo'; action: 'start' | 'end' }
-  | { type: 'sendScript'; scriptId: string }
-  | { type: 'toggleOneComme'; enabled: boolean }
-  | { type: 'setUIVisibility'; target: 'controls' | 'chatHistory' | 'chatInput'; visible: boolean };
+import { updateAppState, getAppState, broadcastCommand, RemoteCommand } from '@/lib/remoteState';
 
 function isValidCommand(cmd: unknown): cmd is RemoteCommand {
   if (!cmd || typeof cmd !== 'object') return false;
@@ -18,7 +11,8 @@ function isValidCommand(cmd: unknown): cmd is RemoteCommand {
     case 'controlVideo':
       return c.action === 'start' || c.action === 'end';
     case 'sendScript':
-      return typeof c.scriptId === 'string';
+      // scriptオブジェクトが存在し、idとtextを持っているか確認
+      return c.script != null && typeof (c.script as Record<string, unknown>).id === 'string' && typeof (c.script as Record<string, unknown>).text === 'string';
     case 'toggleOneComme':
       return typeof c.enabled === 'boolean';
     case 'setUIVisibility':

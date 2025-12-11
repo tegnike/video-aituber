@@ -302,8 +302,8 @@ export default function Home() {
     }
   }, [isScriptSending]);
 
-  // リモートからの台本送信ハンドラ（scriptIdのみで送信）
-  const handleRemoteSendScript = useCallback(async (scriptId: string) => {
+  // リモートからの台本送信ハンドラ（scriptオブジェクト全体を受け取る）
+  const handleRemoteSendScript = useCallback(async (script: Script) => {
     if (isScriptSending) return;
 
     setIsScriptSending(true);
@@ -311,7 +311,7 @@ export default function Home() {
       const response = await fetch('/api/script-send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scriptId }),
+        body: JSON.stringify({ script }),
       });
 
       if (!response.ok) {

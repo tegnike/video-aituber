@@ -68,6 +68,14 @@ export async function POST(
       }
     }
 
+    // scriptが指定されていない場合はエラー
+    if (!script) {
+      return NextResponse.json(
+        { success: false, error: '台本が指定されていません' },
+        { status: 400 }
+      );
+    }
+
     // バリデーション
     const errors = validateScript(script);
     if (errors.length > 0) {

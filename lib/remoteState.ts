@@ -70,10 +70,12 @@ export const subscribe = (subscriber: Subscriber): (() => void) => {
 };
 
 // コマンド購読機能
+import type { Script } from '@/lib/scriptTypes';
+
 export type RemoteCommand =
   | { type: 'selectMode'; mode: 'standby' | 'room' }
   | { type: 'controlVideo'; action: 'start' | 'end' }
-  | { type: 'sendScript'; scriptId: string }
+  | { type: 'sendScript'; script: Script }
   | { type: 'toggleOneComme'; enabled: boolean }
   | { type: 'setUIVisibility'; target: 'controls' | 'chatHistory' | 'chatInput'; visible: boolean };
 

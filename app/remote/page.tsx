@@ -8,6 +8,7 @@
 import { useState, useCallback } from 'react';
 import { useRemoteSync } from '@/hooks/useRemoteSync';
 import ScriptPanel from '@/components/ScriptPanel';
+import ScriptAutoSenderPanel from '@/components/ScriptAutoSenderPanel';
 import type { Script } from '@/lib/scriptTypes';
 
 export default function RemoteControlPage() {
@@ -20,7 +21,7 @@ export default function RemoteControlPage() {
 
     setIsScriptSending(true);
     try {
-      await sendCommand({ type: 'sendScript', scriptId: script.id });
+      await sendCommand({ type: 'sendScript', script });
     } finally {
       setIsScriptSending(false);
     }
@@ -191,6 +192,14 @@ export default function RemoteControlPage() {
         {/* 台本パネル（開始後のみ） */}
         {state?.hasStarted && (
           <ScriptPanel
+            onScriptSend={handleScriptSend}
+            isSending={isScriptSending}
+          />
+        )}
+
+        {/* 台本自動送信パネル（開始後のみ） */}
+        {state?.hasStarted && (
+          <ScriptAutoSenderPanel
             onScriptSend={handleScriptSend}
             isSending={isScriptSending}
           />

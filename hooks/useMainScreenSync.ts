@@ -7,13 +7,14 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { AppState, RemoteCommand } from '@/lib/remoteState';
+import type { Script } from '@/lib/scriptTypes';
 
 export interface UseMainScreenSyncOptions {
   onSelectMode: (mode: 'standby' | 'room') => void;
   onControlVideo: (action: 'start' | 'end') => void;
   onToggleOneComme: (enabled: boolean) => void;
   onUIVisibilityChange: (target: 'controls' | 'chatHistory' | 'chatInput', visible: boolean) => void;
-  onSendScript?: (scriptId: string) => void;
+  onSendScript?: (script: Script) => void;
 }
 
 export interface UseMainScreenSyncReturn {
@@ -54,7 +55,7 @@ export function useMainScreenSync(options: UseMainScreenSyncOptions): UseMainScr
         callbacksRef.current.onUIVisibilityChange(command.target, command.visible);
         break;
       case 'sendScript':
-        callbacksRef.current.onSendScript?.(command.scriptId);
+        callbacksRef.current.onSendScript?.(command.script);
         break;
     }
   }, []);
