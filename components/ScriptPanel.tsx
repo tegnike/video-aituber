@@ -91,7 +91,7 @@ export default function ScriptPanel({
   }, [state.error, fetchScripts]);
 
   return (
-    <div className="flex flex-col gap-3 p-3 bg-black/60 rounded-xl backdrop-blur-sm max-w-xs">
+    <div className="flex flex-col gap-3 p-3 bg-black/60 rounded-xl backdrop-blur-sm ">
       <h2 className="text-white text-sm font-bold">台本</h2>
 
       {/* ローディング表示 */}

@@ -86,120 +86,130 @@ export default function RemoteControlPage() {
 
   return (
     <div className="min-h-screen bg-gray-900 p-4">
-      <div className="max-w-md mx-auto">
-        {/* ヘッダー */}
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-white text-xl font-bold">リモート操作パネル</h1>
-          <div
-            data-testid="connection-status"
-            className="flex items-center gap-2"
-          >
-            <span className="w-2 h-2 rounded-full bg-green-500" />
-            <span className="text-green-400 text-sm">接続中</span>
+      {/* ヘッダー */}
+      <div className="flex items-center justify-between mb-4 px-2">
+        <h1 className="text-white text-xl font-bold">リモート操作パネル</h1>
+        <div
+          data-testid="connection-status"
+          className="flex items-center gap-2"
+        >
+          <span className="w-2 h-2 rounded-full bg-green-500" />
+          <span className="text-green-400 text-sm">接続中</span>
+        </div>
+      </div>
+
+      {/* メインコンテンツ - グリッドレイアウト */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* 左カラム: 状態表示 + コントロール + わんコメ */}
+        <div className="space-y-4">
+          {/* 状態表示 */}
+          <div className="bg-gray-800 rounded-lg p-4">
+            <h2 className="text-white/70 text-sm mb-2">現在の状態</h2>
+            <p data-testid="screen-mode" className="text-white text-lg font-semibold">
+              {screenModeText}
+            </p>
+
+            {/* ローディング状態 */}
+            {state?.isLoadingControlVideo && (
+              <p data-testid="loading-status" className="text-yellow-400 text-sm mt-2">
+                読み込み中...
+              </p>
+            )}
+
+            {/* 再生中の動画 */}
+            {state?.controlVideoType && !state?.isLoadingControlVideo && (
+              <p data-testid="playing-status" className="text-blue-400 text-sm mt-2">
+                {state.controlVideoType === 'start' ? '開始動画再生中' : '終了動画再生中'}
+              </p>
+            )}
           </div>
-        </div>
 
-        {/* 状態表示 */}
-        <div className="bg-gray-800 rounded-lg p-4 mb-4">
-          <h2 className="text-white/70 text-sm mb-2">現在の状態</h2>
-          <p data-testid="screen-mode" className="text-white">
-            {screenModeText}
-          </p>
-
-          {/* ローディング状態 */}
-          {state?.isLoadingControlVideo && (
-            <p data-testid="loading-status" className="text-yellow-400 text-sm mt-2">
-              読み込み中...
-            </p>
-          )}
-
-          {/* 再生中の動画 */}
-          {state?.controlVideoType && !state?.isLoadingControlVideo && (
-            <p data-testid="playing-status" className="text-blue-400 text-sm mt-2">
-              {state.controlVideoType === 'start' ? '開始動画再生中' : '終了動画再生中'}
-            </p>
-          )}
-        </div>
-
-        {/* コントロールボタン */}
-        {state && (
-          <div className="bg-gray-800 rounded-lg p-4 mb-4">
-            <h2 className="text-white/70 text-sm mb-3">コントロール</h2>
-            <div className="flex gap-3">
-              <button
-                onClick={() => handleControlVideo('start')}
-                disabled={isControlDisabled}
-                className="flex-1 px-4 py-3 text-white bg-orange-500 hover:bg-orange-600 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors"
-              >
-                {state?.isLoadingControlVideo && state?.controlVideoType === 'start'
-                  ? '読込中...'
-                  : '開始'}
-              </button>
-              <button
-                onClick={() => handleControlVideo('end')}
-                disabled={isControlDisabled}
-                className="flex-1 px-4 py-3 text-white bg-red-500 hover:bg-red-600 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors"
-              >
-                {state?.isLoadingControlVideo && state?.controlVideoType === 'end'
-                  ? '読込中...'
-                  : '終了'}
-              </button>
+          {/* コントロールボタン */}
+          {state && (
+            <div className="bg-gray-800 rounded-lg p-4">
+              <h2 className="text-white/70 text-sm mb-3">コントロール</h2>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => handleControlVideo('start')}
+                  disabled={isControlDisabled}
+                  className="flex-1 px-4 py-3 text-white bg-orange-500 hover:bg-orange-600 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors font-semibold"
+                >
+                  {state?.isLoadingControlVideo && state?.controlVideoType === 'start'
+                    ? '読込中...'
+                    : '開始'}
+                </button>
+                <button
+                  onClick={() => handleControlVideo('end')}
+                  disabled={isControlDisabled}
+                  className="flex-1 px-4 py-3 text-white bg-red-500 hover:bg-red-600 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors font-semibold"
+                >
+                  {state?.isLoadingControlVideo && state?.controlVideoType === 'end'
+                    ? '読込中...'
+                    : '終了'}
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* わんコメ連携 */}
-        {state && (
-          <div className="bg-gray-800 rounded-lg p-4 mb-4">
-            <h2 className="text-white/70 text-sm mb-3">わんコメ連携</h2>
-            <div className="flex items-center justify-between">
-              <button
-                onClick={handleToggleOneComme}
-                className={`px-4 py-2 rounded-lg transition-colors ${
-                  state?.oneCommeEnabled
-                    ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                    : 'bg-gray-600 hover:bg-gray-500 text-white'
-                }`}
-              >
-                わんコメ {state?.oneCommeEnabled ? 'ON' : 'OFF'}
-              </button>
-              {state?.oneCommeEnabled && (
-                <span
-                  data-testid="onecomme-status"
-                  className={`text-sm ${
-                    state?.oneCommeConnected ? 'text-green-400' : 'text-yellow-400'
+          {/* わんコメ連携 */}
+          {state && (
+            <div className="bg-gray-800 rounded-lg p-4">
+              <h2 className="text-white/70 text-sm mb-3">わんコメ連携</h2>
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={handleToggleOneComme}
+                  className={`px-4 py-2 rounded-lg transition-colors ${
+                    state?.oneCommeEnabled
+                      ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                      : 'bg-gray-600 hover:bg-gray-500 text-white'
                   }`}
                 >
-                  {state?.oneCommeConnected ? '接続中' : '接続待ち...'}
-                </span>
-              )}
+                  わんコメ {state?.oneCommeEnabled ? 'ON' : 'OFF'}
+                </button>
+                {state?.oneCommeEnabled && (
+                  <span
+                    data-testid="onecomme-status"
+                    className={`text-sm ${
+                      state?.oneCommeConnected ? 'text-green-400' : 'text-yellow-400'
+                    }`}
+                  >
+                    {state?.oneCommeConnected ? '接続中' : '接続待ち...'}
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* 台本パネル */}
-        {state && (
-          <ScriptPanel
-            onScriptSend={handleScriptSend}
-            isSending={isScriptSending}
-          />
-        )}
+        {/* 中央カラム: 台本パネル + 台本自動送信 */}
+        <div className="space-y-4">
+          {/* 台本パネル */}
+          {state && (
+            <ScriptPanel
+              onScriptSend={handleScriptSend}
+              isSending={isScriptSending}
+            />
+          )}
 
-        {/* 台本自動送信パネル */}
-        {state && (
-          <ScriptAutoSenderPanel
-            onScriptSend={handleScriptSend}
-            isSending={isScriptSending}
-          />
-        )}
+          {/* 台本自動送信パネル */}
+          {state && (
+            <ScriptAutoSenderPanel
+              onScriptSend={handleScriptSend}
+              isSending={isScriptSending}
+            />
+          )}
+        </div>
 
-        {/* メッセージフォームパネル */}
-        {state && (
-          <MessageFormPanel
-            onMessageSend={handleMessageSend}
-            isSending={isMessageSending}
-          />
-        )}
+        {/* 右カラム: メッセージフォーム */}
+        <div className="space-y-4">
+          {/* メッセージフォームパネル */}
+          {state && (
+            <MessageFormPanel
+              onMessageSend={handleMessageSend}
+              isSending={isMessageSending}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

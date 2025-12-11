@@ -74,7 +74,7 @@ export default function ScriptAutoSenderPanel({
   const displayIndex = status === 'completed' ? total : currentIndex + 1;
 
   return (
-    <div className="flex flex-col gap-3 p-3 bg-black/60 rounded-xl backdrop-blur-sm max-w-xs">
+    <div className="flex flex-col gap-3 p-3 bg-black/60 rounded-xl backdrop-blur-sm ">
       <h2 className="text-white text-sm font-bold">自動送信</h2>
 
       {/* ファイル選択 */}
