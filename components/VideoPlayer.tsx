@@ -218,7 +218,7 @@ export default function VideoPlayer({
         nextOpacitySetter(0);
       }, 0);
       nextVideo.src = firstVideo;
-      nextVideo.muted = !isAudioEnabled;
+      nextVideo.muted = true; // 事前読み込み中は常にミュート（音声漏れ防止）
       nextVideo.preload = 'auto';
       nextVideo.load();
     }
