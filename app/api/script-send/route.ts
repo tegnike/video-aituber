@@ -1,12 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Script, validateScript, DEFAULT_EMOTION } from '@/lib/scriptTypes';
+import fs from 'fs';
+import path from 'path';
+import { Script, validateScript, DEFAULT_EMOTION, parseScriptsConfig } from '@/lib/scriptTypes';
 import { VideoRequest, GenerateVideoResponse } from '@/app/api/generate-video/route';
 
 /**
  * 台本送信リクエスト
+ * script または scriptId のいずれかを指定
  */
 interface ScriptSendRequest {
-  script: Script;
+  script?: Script;
+  scriptId?: string;
+}
+
+/**
+ * scriptIdから台本を検索する
+ */
+function findScriptById(scriptId: string): Script | null {
+  const configPath = path.join(process.cwd(), 'config', 'scripts.json');
+
+  if (!fs.existsSync(configPath)) {
+    return null;
+  }
+
+  try {
+    const fileContent = fs.readFileSync(configPath, 'utf-8');
+    const data = JSON.parse(fileContent);
+    const { scripts } = parseScriptsConfig(data);
+    return scripts.find(s => s.id === scriptId) || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -30,7 +54,19 @@ export async function POST(
 ): Promise<NextResponse<ScriptSendResponse>> {
   try {
     const body = (await request.json()) as ScriptSendRequest;
-    const { script } = body;
+    let { script } = body;
+    const { scriptId } = body;
+
+    // scriptId が指定された場合は台本を検索
+    if (!script && scriptId) {
+      script = findScriptById(scriptId) ?? undefined;
+      if (!script) {
+        return NextResponse.json(
+          { success: false, error: `台本が見つかりません: ${scriptId}` },
+          { status: 404 }
+        );
+      }
+    }
 
     // バリデーション
     const errors = validateScript(script);

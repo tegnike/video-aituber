@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import VideoPlayer from '@/components/VideoPlayer';
 import ChatInput from '@/components/ChatInput';
 import ChatHistory from '@/components/ChatHistory';
 import ScriptPanel from '@/components/ScriptPanel';
 import { useOneComme } from '@/hooks/useOneComme';
+import { useMainScreenSync } from '@/hooks/useMainScreenSync';
 import { Script } from '@/lib/scriptTypes';
+import type { AppState } from '@/lib/remoteState';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -74,6 +76,23 @@ export default function Home() {
 
   // 台本送信中フラグ
   const [isScriptSending, setIsScriptSending] = useState(false);
+
+  // UI表示オプション（リモートからの制御用）
+  // @requirements 5.1, 5.2, 5.3 - リモートパネルからのUI表示切替
+  const [uiVisibility, setUIVisibility] = useState({
+    controls: true,
+    chatHistory: true,
+    chatInput: true,
+  });
+
+  // リモート同期の有効化フラグ（クエリパラメータで制御）
+  const [isRemoteSyncEnabled, setIsRemoteSyncEnabled] = useState(false);
+
+  // クエリパラメータを確認（?remote=true でリモート同期を有効化）
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setIsRemoteSyncEnabled(params.get('remote') === 'true');
+  }, []);
 
   // 背景動画を取得（複数アクションを並列取得）
   const fetchBackgroundVideos = useCallback(async (actions: string[]) => {
@@ -282,6 +301,29 @@ export default function Home() {
     }
   }, [isScriptSending]);
 
+  // リモートからの台本送信ハンドラ（scriptIdのみで送信）
+  const handleRemoteSendScript = useCallback(async (scriptId: string) => {
+    if (isScriptSending) return;
+
+    setIsScriptSending(true);
+    try {
+      const response = await fetch('/api/script-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scriptId }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || '台本の送信に失敗しました');
+      }
+    } catch (error) {
+      console.error('[handleRemoteSendScript] エラー:', error);
+    } finally {
+      setIsScriptSending(false);
+    }
+  }, [isScriptSending]);
+
   // 動画生成状態をポーリングで確認（開始後のみ）
   useEffect(() => {
     if (!hasStarted) return;
@@ -440,6 +482,82 @@ export default function Home() {
     onComment: handleOneCommeComment,
   });
 
+  // リモートからのコマンドハンドラ
+  // @requirements 2.1, 2.2, 3.2 - リモートパネルからの操作を受信して実行
+  const handleRemoteSelectMode = useCallback((mode: 'standby' | 'room') => {
+    handleScreenModeSelect(mode);
+  }, [handleScreenModeSelect]);
+
+  const handleRemoteControlVideo = useCallback((action: 'start' | 'end') => {
+    if (action === 'start') {
+      handleStartButton();
+    } else {
+      handleEndButton();
+    }
+  }, [handleStartButton, handleEndButton]);
+
+  const handleRemoteToggleOneComme = useCallback((enabled: boolean) => {
+    setOneCommeEnabled(enabled);
+  }, []);
+
+  // @requirements 5.1, 5.2, 5.3 - リモートパネルからのUI表示切替を受信
+  const handleRemoteUIVisibilityChange = useCallback((
+    target: 'controls' | 'chatHistory' | 'chatInput',
+    visible: boolean
+  ) => {
+    setUIVisibility(prev => ({ ...prev, [target]: visible }));
+  }, []);
+
+  // メイン画面用SSE同期フック
+  // @requirements 4.1 - リモートからのコマンドを受信して状態を更新
+  const { isConnected: isRemoteConnected, reportState } = useMainScreenSync({
+    onSelectMode: handleRemoteSelectMode,
+    onControlVideo: handleRemoteControlVideo,
+    onToggleOneComme: handleRemoteToggleOneComme,
+    onUIVisibilityChange: handleRemoteUIVisibilityChange,
+    onSendScript: handleRemoteSendScript,
+  });
+
+  // 状態変更時にリモートに報告
+  // @requirements 2.5, 4.2, 4.3 - メイン画面の状態をリモートに報告
+  const lastReportedStateRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isRemoteSyncEnabled || !isRemoteConnected) return;
+
+    const currentState: AppState = {
+      hasStarted,
+      screenMode,
+      isLoadingBackground,
+      isLoadingControlVideo,
+      controlVideoType,
+      oneCommeEnabled,
+      oneCommeConnected,
+      isScriptSending,
+      uiVisibility,
+    };
+
+    const stateString = JSON.stringify(currentState);
+    if (stateString !== lastReportedStateRef.current) {
+      lastReportedStateRef.current = stateString;
+      reportState(currentState).catch(err => {
+        console.error('Failed to report state:', err);
+      });
+    }
+  }, [
+    isRemoteSyncEnabled,
+    isRemoteConnected,
+    hasStarted,
+    screenMode,
+    isLoadingBackground,
+    isLoadingControlVideo,
+    controlVideoType,
+    oneCommeEnabled,
+    oneCommeConnected,
+    isScriptSending,
+    uiVisibility,
+    reportState,
+  ]);
+
   const handleVideoEnd = useCallback(
     (finishedVideoPath: string | null) => {
       // 終了した動画を使用済みに追加
@@ -529,56 +647,59 @@ export default function Home() {
           />
 
           {/* 左側コントロールパネル */}
-          <div className="fixed left-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-10">
-            {/* コントロールボタン */}
-            <div className="flex flex-col gap-4">
-              <button
-                onClick={handleStartButton}
-                disabled={isLoadingControlVideo || !!controlVideoType}
-                className="px-6 py-4 text-lg font-bold text-white bg-orange-500 hover:bg-orange-600 disabled:bg-gray-500 disabled:cursor-not-allowed rounded-xl transition-colors shadow-lg"
-              >
-                {isLoadingControlVideo && controlVideoType === 'start' ? '読込中...' : '開始'}
-              </button>
-              <button
-                onClick={handleEndButton}
-                disabled={isLoadingControlVideo || !!controlVideoType}
-                className="px-6 py-4 text-lg font-bold text-white bg-red-500 hover:bg-red-600 disabled:bg-gray-500 disabled:cursor-not-allowed rounded-xl transition-colors shadow-lg"
-              >
-                {isLoadingControlVideo && controlVideoType === 'end' ? '読込中...' : '終了'}
-              </button>
-
-              {/* わんコメ連携トグル */}
-              <div className="mt-4 flex flex-col gap-2">
+          {/* @requirements 5.1 - リモートパネルからの表示/非表示切替 */}
+          {uiVisibility.controls && (
+            <div className="fixed left-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-10">
+              {/* コントロールボタン */}
+              <div className="flex flex-col gap-4">
                 <button
-                  onClick={() => setOneCommeEnabled(!oneCommeEnabled)}
-                  className={`px-4 py-3 text-sm font-bold text-white rounded-xl transition-colors shadow-lg ${
-                    oneCommeEnabled
-                      ? 'bg-purple-600 hover:bg-purple-700'
-                      : 'bg-gray-600 hover:bg-gray-700'
-                  }`}
+                  onClick={handleStartButton}
+                  disabled={isLoadingControlVideo || !!controlVideoType}
+                  className="px-6 py-4 text-lg font-bold text-white bg-orange-500 hover:bg-orange-600 disabled:bg-gray-500 disabled:cursor-not-allowed rounded-xl transition-colors shadow-lg"
                 >
-                  わんコメ {oneCommeEnabled ? 'ON' : 'OFF'}
+                  {isLoadingControlVideo && controlVideoType === 'start' ? '読込中...' : '開始'}
                 </button>
-                {oneCommeEnabled && (
-                  <div className="text-xs text-center">
-                    {oneCommeConnected ? (
-                      <span className="text-green-400">接続中</span>
-                    ) : oneCommeError ? (
-                      <span className="text-red-400">エラー</span>
-                    ) : (
-                      <span className="text-yellow-400">接続待ち...</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+                <button
+                  onClick={handleEndButton}
+                  disabled={isLoadingControlVideo || !!controlVideoType}
+                  className="px-6 py-4 text-lg font-bold text-white bg-red-500 hover:bg-red-600 disabled:bg-gray-500 disabled:cursor-not-allowed rounded-xl transition-colors shadow-lg"
+                >
+                  {isLoadingControlVideo && controlVideoType === 'end' ? '読込中...' : '終了'}
+                </button>
 
-            {/* 台本パネル */}
-            <ScriptPanel
-              onScriptSend={handleScriptSend}
-              isSending={isScriptSending}
-            />
-          </div>
+                {/* わんコメ連携トグル */}
+                <div className="mt-4 flex flex-col gap-2">
+                  <button
+                    onClick={() => setOneCommeEnabled(!oneCommeEnabled)}
+                    className={`px-4 py-3 text-sm font-bold text-white rounded-xl transition-colors shadow-lg ${
+                      oneCommeEnabled
+                        ? 'bg-purple-600 hover:bg-purple-700'
+                        : 'bg-gray-600 hover:bg-gray-700'
+                    }`}
+                  >
+                    わんコメ {oneCommeEnabled ? 'ON' : 'OFF'}
+                  </button>
+                  {oneCommeEnabled && (
+                    <div className="text-xs text-center">
+                      {oneCommeConnected ? (
+                        <span className="text-green-400">接続中</span>
+                      ) : oneCommeError ? (
+                        <span className="text-red-400">エラー</span>
+                      ) : (
+                        <span className="text-yellow-400">接続待ち...</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 台本パネル */}
+              <ScriptPanel
+                onScriptSend={handleScriptSend}
+                isSending={isScriptSending}
+              />
+            </div>
+          )}
         </>
       ) : (
         <div className="fixed inset-0 bg-black flex items-center justify-center">
@@ -597,10 +718,16 @@ export default function Home() {
       )}
 
       {/* チャット履歴 */}
-      <ChatHistory messages={messages} isLoading={isLoading} />
+      {/* @requirements 5.2 - リモートパネルからの表示/非表示切替 */}
+      {uiVisibility.chatHistory && (
+        <ChatHistory messages={messages} isLoading={isLoading} />
+      )}
 
       {/* チャット入力 */}
-      <ChatInput onSendMessage={handleSendMessage} disabled={isLoading} />
+      {/* @requirements 5.3 - リモートパネルからの表示/非表示切替 */}
+      {uiVisibility.chatInput && (
+        <ChatInput onSendMessage={handleSendMessage} disabled={isLoading} />
+      )}
     </div>
   );
 }
