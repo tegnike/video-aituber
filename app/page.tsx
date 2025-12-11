@@ -496,11 +496,7 @@ export default function Home() {
     async (comment: { name: string; comment: string; profileImage?: string }) => {
       if (isLoading) return;
 
-      // #で始まるコメントのみLLMに送信
-      if (!comment.comment.startsWith('#')) return;
-
-      // 先頭の#を削除
-      const messageContent = comment.comment.slice(1).trim();
+      const messageContent = comment.comment.trim();
       if (!messageContent) return;
 
       // コメントをユーザーメッセージとして表示
