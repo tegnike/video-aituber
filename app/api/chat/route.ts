@@ -5,10 +5,20 @@ type VideoRequest = {
   params: { text: string; emotion: string };
 };
 
+// セグメント型
+interface Segment {
+  text: string;
+  emotion: string;
+}
+
 // ワークフローAPIレスポンスの型
 interface WorkflowResponse {
-  response: string;
-  emotion: string;
+  // 新形式
+  segments?: Segment[];
+  // 後方互換用
+  response?: string;
+  emotion?: string;
+  // 共通
   usernameReading: string;
   isFirstTime: boolean;
   shouldRespond: boolean;
@@ -60,17 +70,40 @@ export async function POST(request: NextRequest) {
     if (!workflowData.shouldRespond) {
       return NextResponse.json({
         message: '',
+        segments: [],
         role: 'assistant',
         shouldRespond: false,
       });
     }
 
-    const { response, emotion } = workflowData;
+    // segments を VideoRequest[] に変換
+    let requests: VideoRequest[];
+    let displayMessage: string;
 
-    // アクション列を生成
-    const requests: VideoRequest[] = [
-      { action: 'speak', params: { text: response, emotion } },
-    ];
+    if (workflowData.segments && workflowData.segments.length > 0) {
+      // 新形式: segments配列を使用
+      requests = workflowData.segments.map((segment) => ({
+        action: 'speak' as const,
+        params: { text: segment.text, emotion: segment.emotion },
+      }));
+      displayMessage = workflowData.segments.map(s => s.text).join(' ');
+    } else if (workflowData.response) {
+      // 旧形式: 単一response/emotionを使用（後方互換性）
+      requests = [{
+        action: 'speak',
+        params: {
+          text: workflowData.response,
+          emotion: workflowData.emotion || 'neutral',
+        },
+      }];
+      displayMessage = workflowData.response;
+    } else {
+      // どちらも無い場合はエラー
+      return NextResponse.json(
+        { error: 'Invalid workflow response' },
+        { status: 500 }
+      );
+    }
 
     // 動画生成APIへのリクエスト（非同期で開始）
     const generateVideoUrl = `${request.nextUrl.origin}/api/generate-video`;
@@ -85,7 +118,8 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
-      message: response,
+      message: displayMessage,
+      segments: workflowData.segments || [{ text: displayMessage, emotion: workflowData.emotion || 'neutral' }],
       role: 'assistant',
       shouldRespond: true,
       usernameReading: workflowData.usernameReading,
