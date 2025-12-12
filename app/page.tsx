@@ -161,7 +161,14 @@ export default function Home() {
     fetchBackgroundVideos(loopActions);
   }, [appConfig, fetchBackgroundVideos]);
 
+  // コントロール動画セッション管理
+  // @requirements 1.3, 2.4 - コントロール動画用のセッションIDを管理
+  const [controlVideoSessionId, setControlVideoSessionId] = useState<string | null>(null);
+  const [expectedSequenceCount, setExpectedSequenceCount] = useState(0);
+
   // コントロール動画（start または end）を取得（複数動画+afterAction動画を並列取得）
+  // @requirements 1.3, 1.4, 2.4 - セッションID生成とシーケンス番号付与
+  // 動画パスはポーリング経由で順序通りに取得される
   const fetchControlVideo = useCallback(async (buttonType: 'start' | 'end') => {
     try {
       setIsLoadingControlVideo(true);
@@ -173,72 +180,52 @@ export default function Home() {
       const afterActionConfig = buttonConfig?.afterAction || 'loop';
       const afterActions = Array.isArray(afterActionConfig) ? afterActionConfig : [afterActionConfig];
 
-      // 全てのアクション動画とafterAction動画を並列で取得
+      // セッションIDを生成（コントロール動画用）
+      // @requirements 1.3 - 各リクエストに順序識別子を付与
+      const newSessionId = crypto.randomUUID();
+      setControlVideoSessionId(newSessionId);
+
+      // アクション数のみカウント（afterActionsはループ動画として扱われるためカウント対象外）
+      const totalCount = actions.length + afterActions.length;
+      setExpectedSequenceCount(actions.length);
+
+      // 状態をクリア（ポーリングで再取得するため）
+      setControlVideoPath(null);
+      setControlVideoQueue([]);
+      setAllControlVideoPaths([]);
+      setPrefetchedAfterActionPaths([]);
+
+      // 全てのアクション動画とafterAction動画を並列でリクエスト送信
+      // @requirements 1.4 - afterActionsの動画をactionsの動画の後に再生
+      // 動画パスはコールバックAPI経由でポーリング取得し、順序保証
       const allActions = [...actions, ...afterActions];
-      const responses = await Promise.all(
-        allActions.map((action) =>
+      await Promise.all(
+        allActions.map((action, index) =>
           fetch('/api/generate-video', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ requests: [{ action, params: {} }] }),
+            body: JSON.stringify({
+              requests: [{ action, params: {} }],
+              sessionId: newSessionId,
+              sequence: index,
+              totalCount,
+            }),
           })
         )
       );
 
-      const dataList = await Promise.all(responses.map((r) => r.json()));
-
-      // 各アクションの動画パスを取得
-      const videoPaths: string[] = [];
-      for (let i = 0; i < actions.length; i++) {
-        const action = actions[i];
-        const result = dataList[i].results?.find(
-          (r: { action: string }) => r.action === action
-        );
-        const videoPath =
-          typeof result?.videoUrl === 'string' && result.videoUrl.length > 0
-            ? result.videoUrl
-            : null;
-        if (videoPath) {
-          videoPaths.push(videoPath);
-        }
-      }
-
-      // afterAction動画のパス（複数対応）
-      const afterActionPaths: string[] = [];
-      for (let i = 0; i < afterActions.length; i++) {
-        const action = afterActions[i];
-        const afterActionData = dataList[actions.length + i];
-        const afterActionResult = afterActionData.results?.find(
-          (r: { action: string }) => r.action === action
-        );
-        const afterActionPath =
-          typeof afterActionResult?.videoUrl === 'string' && afterActionResult.videoUrl.length > 0
-            ? afterActionResult.videoUrl
-            : null;
-        if (afterActionPath) {
-          afterActionPaths.push(afterActionPath);
-        }
-      }
-
-      // 最初の動画を再生、残りはキューに入れる
-      if (videoPaths.length > 0) {
-        setControlVideoPath(videoPaths[0]);
-        setControlVideoQueue(videoPaths.slice(1));
-        setAllControlVideoPaths(videoPaths);
-      }
-
-      if (afterActionPaths.length > 0) {
-        setPrefetchedAfterActionPaths(afterActionPaths);
-      }
+      // 動画パスはポーリング経由で取得されるため、ここでは設定しない
+      // @requirements 2.1, 2.2, 3.1 - コールバックAPIでシーケンス順に格納・取得
     } catch (error) {
       console.error(`Error fetching ${buttonType} video:`, error);
       setControlVideoType(null);
+      setControlVideoSessionId(null);
     } finally {
       setIsLoadingControlVideo(false);
     }
   }, [appConfig]);
 
-  // 動画生成状態をポーリングで確認する関数
+  // 動画生成状態をポーリングで確認する関数（チャット応答動画用）
   const pollVideoStatus = useCallback(async () => {
     try {
       const response = await fetch('/api/generate-video-callback');
@@ -256,6 +243,51 @@ export default function Home() {
       console.error('Error polling video status:', error);
     }
   }, [usedVideoPaths, generatedVideoPath]);
+
+  // コントロール動画用ポーリング（セッションIDを使用）
+  // @requirements 3.1, 3.2 - セッションIDでポーリングし、順序通りに動画を取得
+  const pollControlVideoStatus = useCallback(async () => {
+    if (!controlVideoSessionId) return;
+
+    try {
+      const response = await fetch(
+        `/api/generate-video-callback?sessionId=${encodeURIComponent(controlVideoSessionId)}`
+      );
+      const data = await response.json();
+
+      if (data.videoPath && !usedVideoPaths.has(data.videoPath)) {
+        // 順序通りに動画が取得できた
+        if (!controlVideoPath) {
+          // まだコントロール動画が設定されていない場合は設定
+          setControlVideoPath(data.videoPath);
+        } else {
+          // 既にコントロール動画がある場合はキューに追加
+          setControlVideoQueue((prev) => {
+            if (!prev.includes(data.videoPath)) {
+              return [...prev, data.videoPath];
+            }
+            return prev;
+          });
+        }
+
+        // 全動画パスリストに追加
+        setAllControlVideoPaths((prev) => {
+          if (!prev.includes(data.videoPath)) {
+            return [...prev, data.videoPath];
+          }
+          return prev;
+        });
+
+        // セッション完了チェック
+        if (data.isComplete) {
+          // 完了したのでセッションIDをクリア
+          setControlVideoSessionId(null);
+        }
+      }
+    } catch (error) {
+      console.error('Error polling control video status:', error);
+    }
+  }, [controlVideoSessionId, usedVideoPaths, controlVideoPath]);
 
   // 画面モード選択時の処理（リモートからのselectModeコマンド用）
   // @requirements 3.2, 4.3 - setHasStartedを削除（常にtrue）、リモートからのモード切り替えを維持
@@ -399,7 +431,7 @@ export default function Home() {
     }
   }, [isScriptSending]);
 
-  // 動画生成状態をポーリングで確認（開始後のみ）
+  // 動画生成状態をポーリングで確認（開始後のみ、チャット応答動画用）
   useEffect(() => {
     if (!hasStarted) return;
 
@@ -407,6 +439,16 @@ export default function Home() {
     const interval = setInterval(pollVideoStatus, 1000);
     return () => clearInterval(interval);
   }, [hasStarted, pollVideoStatus]);
+
+  // コントロール動画用ポーリング（セッションIDがある場合のみ）
+  // @requirements 3.1, 3.2 - セッションIDでポーリングし、順序通りに動画を取得
+  useEffect(() => {
+    if (!controlVideoSessionId) return;
+
+    pollControlVideoStatus();
+    const interval = setInterval(pollControlVideoStatus, 500); // 高頻度でポーリング
+    return () => clearInterval(interval);
+  }, [controlVideoSessionId, pollControlVideoStatus]);
 
   // エラー時の自動リトライ（5秒ごと）
   useEffect(() => {
@@ -684,6 +726,9 @@ export default function Home() {
     reportState,
   ]);
 
+  // 再生済み動画カウント（コントロール動画完了検知用）
+  const [playedControlVideoCount, setPlayedControlVideoCount] = useState(0);
+
   const handleVideoEnd = useCallback(
     (finishedVideoPath: string | null) => {
       // 終了した動画を使用済みに追加
@@ -696,15 +741,21 @@ export default function Home() {
       }
 
       // コントロール動画シーケンスの完了チェック
-      // VideoPlayerが内部キューで管理するため、最後の動画が終了したら状態をクリア
+      // @requirements 3.3 - セッション完了後に状態をクリア
       if (controlVideoType && finishedVideoPath) {
-        const lastVideoPath = allControlVideoPaths[allControlVideoPaths.length - 1];
-        if (finishedVideoPath === lastVideoPath) {
+        const newPlayedCount = playedControlVideoCount + 1;
+        setPlayedControlVideoCount(newPlayedCount);
+
+        // 全コントロール動画の再生完了（期待するシーケンス数と一致）
+        if (newPlayedCount >= expectedSequenceCount && expectedSequenceCount > 0) {
           // 全コントロール動画の再生完了
           setControlVideoPath(null);
           setControlVideoType(null);
           setControlVideoQueue([]);
           setAllControlVideoPaths([]);
+          setControlVideoSessionId(null);
+          setPlayedControlVideoCount(0);
+          setExpectedSequenceCount(0);
 
           // プリフェッチ済みのafterAction動画を背景に設定
           if (prefetchedAfterActionPaths.length > 0) {
@@ -726,7 +777,7 @@ export default function Home() {
       // 動画終了時に次の動画を即座に取得
       pollVideoStatus();
     },
-    [pollVideoStatus, controlVideoType, allControlVideoPaths, prefetchedAfterActionPaths]
+    [pollVideoStatus, controlVideoType, prefetchedAfterActionPaths, playedControlVideoCount, expectedSequenceCount]
   );
 
   // 動画パスの決定

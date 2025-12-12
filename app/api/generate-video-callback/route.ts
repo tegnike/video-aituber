@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-// 動画生成の状態を管理するための簡易的なストア
-const videoQueue: Map<string, { path: string; timestamp: number }> = new Map();
+import {
+  addVideoToSession,
+  getNextVideo,
+  cleanupOldSessions,
+} from '@/lib/sessionVideoQueue';
+import {
+  addToLegacyQueue,
+  getFromLegacyQueue,
+  cleanupOldLegacyEntries,
+} from '@/lib/legacyVideoQueue';
 
 export async function POST(request: NextRequest) {
   try {
-    const { videoPath } = await request.json();
+    const { videoPath, sessionId, sequence, totalCount } = await request.json();
 
     if (!videoPath) {
       return NextResponse.json(
@@ -14,23 +21,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 動画パスをキューに追加（API経由でアクセスできるURLに変換）
-    const id = Date.now().toString();
     // 動画ファイルへのアクセスは /api/video?path=... 経由で行う
     const videoUrl = `/api/video?path=${encodeURIComponent(videoPath)}`;
-    videoQueue.set(id, {
-      path: videoUrl,
-      timestamp: Date.now(),
-    });
 
-    // 古いエントリを削除（1時間以上前のもの）
-    const oneHourAgo = Date.now() - 60 * 60 * 1000;
-    for (const [key, value] of videoQueue.entries()) {
-      if (value.timestamp < oneHourAgo) {
-        videoQueue.delete(key);
-      }
+    // セッションIDがある場合はセッション別キューに格納
+    if (sessionId !== undefined && sequence !== undefined && totalCount !== undefined) {
+      addVideoToSession({
+        sessionId,
+        sequence,
+        videoPath: videoUrl,
+        totalCount,
+      });
+    } else {
+      // 従来の動作（後方互換性）
+      const id = Date.now().toString();
+      addToLegacyQueue(id, videoUrl);
     }
 
+    // 古いエントリ・セッションを削除（1時間以上前のもの）
+    cleanupOldLegacyEntries();
+    cleanupOldSessions();
+
+    const id = Date.now().toString();
     return NextResponse.json({ success: true, id });
   } catch (error) {
     console.error('Error in video callback API:', error);
@@ -41,18 +53,28 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // まだクライアントに渡していない最古の動画パスを取得し、キューから取り除く
-    const iterator = videoQueue.entries().next();
-    if (iterator.done) {
+    const sessionId = request.nextUrl.searchParams.get('sessionId');
+
+    // セッションIDがある場合はセッション別キューから取得
+    if (sessionId) {
+      const result = getNextVideo(sessionId);
+      return NextResponse.json({
+        videoPath: result.videoPath,
+        sessionId: result.sessionId,
+        sequence: result.sequence,
+        isComplete: result.isComplete,
+      });
+    }
+
+    // 従来の動作（後方互換性）
+    const entry = getFromLegacyQueue();
+    if (!entry) {
       return NextResponse.json({ videoPath: null });
     }
 
-    const [id, value] = iterator.value;
-    videoQueue.delete(id);
-
-    return NextResponse.json({ videoPath: value.path });
+    return NextResponse.json({ videoPath: entry.path });
   } catch (error) {
     console.error('Error getting video status:', error);
     return NextResponse.json(

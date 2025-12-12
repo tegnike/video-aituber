@@ -19,7 +19,7 @@ export interface GenerateVideoResponse {
 
 export async function POST(request: NextRequest) {
   try {
-    const { requests } = await request.json();
+    const { requests, sessionId, sequence, totalCount } = await request.json();
 
     if (!requests || !Array.isArray(requests) || requests.length === 0) {
       return NextResponse.json(
@@ -145,16 +145,31 @@ export async function POST(request: NextRequest) {
             if (result.outputPath) {
               const videoUrl = `/api/video?path=${encodeURIComponent(result.outputPath)}`;
 
-              // コールバックAPIに送信
+              // コールバックAPIに送信（セッション情報を含める）
+              // @requirements 1.3, 2.1, 2.4 - シーケンス番号とセッションIDを転送
               const callbackUrl = `${request.nextUrl.origin}/api/generate-video-callback`;
+              const callbackBody: {
+                videoPath: string;
+                sessionId?: string;
+                sequence?: number;
+                totalCount?: number;
+              } = {
+                videoPath: result.outputPath,
+              };
+
+              // セッション情報がある場合は含める
+              if (sessionId !== undefined && sequence !== undefined && totalCount !== undefined) {
+                callbackBody.sessionId = sessionId;
+                callbackBody.sequence = sequence;
+                callbackBody.totalCount = totalCount;
+              }
+
               fetch(callbackUrl, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                  videoPath: result.outputPath,
-                }),
+                body: JSON.stringify(callbackBody),
               }).catch((error) => {
                 console.error('Error calling callback API:', error);
               });
