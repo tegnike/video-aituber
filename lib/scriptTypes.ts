@@ -120,6 +120,50 @@ export interface ScriptSequence {
 /** デフォルトの送信間隔（秒） */
 export const DEFAULT_SEND_INTERVAL = 5;
 
+// ============================================
+// プリセットシーケンス機能用の型定義
+// ============================================
+
+/**
+ * プリセットシーケンスのメタ情報
+ * @see design.md - Data Models
+ */
+export interface PresetSequenceInfo {
+  /** ファイル識別子（拡張子なしファイル名） */
+  id: string;
+  /** シーケンス名（JSONのnameフィールド、なければファイル名） */
+  name: string;
+  /** ファイル名（拡張子付き） */
+  fileName: string;
+  /** 台本件数 */
+  scriptCount: number;
+}
+
+/**
+ * プリセット一覧APIのレスポンス
+ */
+export interface PresetSequencesResponse {
+  presets: PresetSequenceInfo[];
+}
+
+/**
+ * ファイル名とシーケンスデータからプリセットメタ情報を抽出する
+ * @param fileName - ファイル名（拡張子付き）
+ * @param sequence - パース済みのシーケンスデータ
+ * @returns プリセットメタ情報
+ */
+export function extractPresetInfo(fileName: string, sequence: ScriptSequence): PresetSequenceInfo {
+  // 拡張子を除去してIDを生成
+  const id = fileName.replace(/\.json$/i, '');
+
+  return {
+    id,
+    name: sequence.name || id,
+    fileName,
+    scriptCount: sequence.scripts.length,
+  };
+}
+
 /** Hook の返却状態 */
 export interface AutoSenderState {
   /** 現在のステータス */
@@ -138,6 +182,8 @@ export interface AutoSenderState {
 export interface AutoSenderActions {
   /** シーケンスファイルを読み込む */
   loadSequence: (file: File) => Promise<void>;
+  /** パース済みシーケンスデータを直接読み込む */
+  loadSequenceFromData: (data: ScriptSequence) => void;
   /** 自動送信を開始 */
   start: () => void;
   /** 一時停止 */

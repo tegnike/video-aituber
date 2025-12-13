@@ -23,6 +23,18 @@
       "label": "考え中",
       "text": "うーん、ちょっと考えさせてください...",
       "emotion": "thinking"
+    },
+    {
+      "id": "comment1",
+      "label": "コメント拾い1",
+      "text": "あ、コメントが来ていますね",
+      "emotion": "neutral"
+    },
+    {
+      "id": "comment2",
+      "label": "コメント拾い2",
+      "text": "コメント読みますね",
+      "emotion": "neutral"
     }
   ]
 }

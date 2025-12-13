@@ -1,7 +1,7 @@
 'use client';
 
-import { useRef, useCallback, ChangeEvent } from 'react';
-import { Script } from '@/lib/scriptTypes';
+import { useRef, useCallback, ChangeEvent, useState, useEffect } from 'react';
+import { Script, PresetSequenceInfo, ScriptSequence } from '@/lib/scriptTypes';
 import { useScriptAutoSender } from '@/hooks/useScriptAutoSender';
 
 interface ScriptAutoSenderPanelProps {
@@ -17,6 +17,13 @@ export default function ScriptAutoSenderPanel({
 }: ScriptAutoSenderPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // プリセット関連の状態
+  const [presets, setPresets] = useState<PresetSequenceInfo[]>([]);
+  const [isLoadingPresets, setIsLoadingPresets] = useState(true);
+  const [presetError, setPresetError] = useState<string | null>(null);
+  const [presetLoadingId, setPresetLoadingId] = useState<string | null>(null);
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+
   const {
     status,
     sequence,
@@ -24,6 +31,7 @@ export default function ScriptAutoSenderPanel({
     interval,
     error,
     loadSequence,
+    loadSequenceFromData,
     start,
     pause,
     resume,
@@ -32,11 +40,61 @@ export default function ScriptAutoSenderPanel({
     clearSequence,
   } = useScriptAutoSender(onScriptSend, isSending);
 
+  // プリセット一覧を取得する関数
+  const fetchPresets = useCallback(async () => {
+    setIsLoadingPresets(true);
+    setPresetError(null);
+    try {
+      const response = await fetch('/api/preset-sequences');
+      if (!response.ok) {
+        throw new Error('プリセットの取得に失敗しました');
+      }
+      const data = await response.json();
+      setPresets(data.presets || []);
+    } catch (err) {
+      setPresetError(err instanceof Error ? err.message : 'プリセットの取得に失敗しました');
+      setPresets([]);
+    } finally {
+      setIsLoadingPresets(false);
+    }
+  }, []);
+
+  // コンポーネントマウント時にプリセット一覧を取得
+  useEffect(() => {
+    fetchPresets();
+  }, [fetchPresets]);
+
+  // プリセット選択ハンドラ
+  const handlePresetSelect = useCallback(async (preset: PresetSequenceInfo) => {
+    // ファイル選択状態をクリア
+    clearSequence();
+    setSelectedPresetId(preset.id);
+    setPresetLoadingId(preset.id);
+    setPresetError(null);
+
+    try {
+      const response = await fetch(`/api/preset-sequences?id=${preset.id}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'プリセットの読み込みに失敗しました');
+      }
+      const sequenceData: ScriptSequence = await response.json();
+      loadSequenceFromData(sequenceData);
+    } catch (err) {
+      setPresetError(err instanceof Error ? err.message : 'プリセットの読み込みに失敗しました');
+      setSelectedPresetId(null);
+    } finally {
+      setPresetLoadingId(null);
+    }
+  }, [clearSequence, loadSequenceFromData]);
+
   // ファイル選択ハンドラ
   const handleFileChange = useCallback(
     async (e: ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
+        // プリセット選択状態をクリア
+        setSelectedPresetId(null);
         await loadSequence(file);
       }
       // input値をリセットして同じファイルを再選択可能にする
@@ -76,6 +134,63 @@ export default function ScriptAutoSenderPanel({
   return (
     <div className="flex flex-col gap-3 p-3 bg-black/60 rounded-xl backdrop-blur-sm ">
       <h2 className="text-white text-sm font-bold">自動送信</h2>
+
+      {/* プリセット一覧セクション */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <span className="text-white/60 text-xs">プリセット</span>
+          <button
+            onClick={fetchPresets}
+            disabled={isLoadingPresets}
+            className="px-2 py-1 text-xs text-white/60 hover:text-white bg-transparent hover:bg-white/10 disabled:cursor-not-allowed rounded transition-colors"
+          >
+            更新
+          </button>
+        </div>
+
+        {/* ローディング状態 */}
+        {isLoadingPresets && (
+          <p className="text-white/50 text-xs">読み込み中...</p>
+        )}
+
+        {/* プリセットエラー表示 */}
+        {presetError && !isLoadingPresets && (
+          <p className="text-red-400 text-xs">{presetError}</p>
+        )}
+
+        {/* プリセット一覧 */}
+        {!isLoadingPresets && !presetError && presets.length === 0 && (
+          <p className="text-white/50 text-xs">プリセットがありません</p>
+        )}
+
+        {!isLoadingPresets && presets.length > 0 && (
+          <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
+            {presets.map((preset) => (
+              <button
+                key={preset.id}
+                data-preset-id={preset.id}
+                data-selected={selectedPresetId === preset.id}
+                onClick={() => handlePresetSelect(preset)}
+                disabled={status === 'running' || presetLoadingId !== null}
+                className={`flex items-center justify-between px-2 py-1.5 text-xs rounded transition-colors ${
+                  selectedPresetId === preset.id
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white/10 text-white/80 hover:bg-white/20'
+                } disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                <span className="truncate">{preset.name}</span>
+                <span className="text-white/50 ml-2 shrink-0">
+                  {presetLoadingId === preset.id ? (
+                    <span data-testid={`preset-loading-${preset.id}`}>...</span>
+                  ) : (
+                    `${preset.scriptCount}件`
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* ファイル選択 */}
       <div className="flex flex-col gap-2">

@@ -124,6 +124,22 @@ export function useScriptAutoSender(
     };
   }, [clearTimer]);
 
+  // シーケンス設定の共通処理
+  const applySequence = useCallback((seq: ScriptSequence) => {
+    setSequence(seq);
+    sequenceRef.current = seq;
+    // defaultIntervalがあれば適用
+    if (seq.defaultInterval !== undefined) {
+      setIntervalState(seq.defaultInterval);
+      intervalRef.current = seq.defaultInterval;
+    }
+    setCurrentIndex(0);
+    currentIndexRef.current = 0;
+    setStatus('idle');
+    statusRef.current = 'idle';
+    setError(null);
+  }, []);
+
   // ファイル読み込み
   const loadSequence = useCallback(async (file: File): Promise<void> => {
     setError(null);
@@ -147,21 +163,18 @@ export function useScriptAutoSender(
       }
 
       if (result.sequence) {
-        setSequence(result.sequence);
-        // defaultIntervalがあれば適用
-        if (result.sequence.defaultInterval !== undefined) {
-          setIntervalState(result.sequence.defaultInterval);
-          intervalRef.current = result.sequence.defaultInterval;
-        }
-        setCurrentIndex(0);
-        currentIndexRef.current = 0;
-        setStatus('idle');
+        applySequence(result.sequence);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'ファイル読み込みエラー');
       setSequence(null);
     }
-  }, []);
+  }, [applySequence]);
+
+  // パース済みシーケンスデータを直接読み込む
+  const loadSequenceFromData = useCallback((data: ScriptSequence) => {
+    applySequence(data);
+  }, [applySequence]);
 
   // 開始
   const start = useCallback(() => {
@@ -247,6 +260,7 @@ export function useScriptAutoSender(
     error,
     // Actions
     loadSequence,
+    loadSequenceFromData,
     start,
     pause,
     resume,

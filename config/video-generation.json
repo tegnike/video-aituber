@@ -45,7 +45,7 @@
   },
   "controlButtons": {
     "start": {
-      "actions": ["intro", "dark", "start"],
+      "actions": ["dark", "intro", "dark", "start"],
       "afterAction": ["loop", "loop2", "loop3", "loop4", "loop5"]
     },
     "end": {

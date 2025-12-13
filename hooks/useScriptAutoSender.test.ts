@@ -50,6 +50,99 @@ describe('useScriptAutoSender', () => {
     });
   });
 
+  describe('loadSequenceFromData - パース済みシーケンス読み込み', () => {
+    it('パース済みのシーケンスデータを直接読み込める', () => {
+      const { result } = renderHook(() => useScriptAutoSender(mockOnScriptSend, false));
+
+      const sequenceData = {
+        name: 'テストシーケンス',
+        scripts: testScripts,
+        defaultInterval: 10,
+      };
+
+      act(() => {
+        result.current.loadSequenceFromData(sequenceData);
+      });
+
+      expect(result.current.sequence?.name).toBe('テストシーケンス');
+      expect(result.current.sequence?.scripts).toHaveLength(3);
+      expect(result.current.interval).toBe(10);
+      expect(result.current.status).toBe('idle');
+      expect(result.current.error).toBeNull();
+    });
+
+    it('defaultIntervalがない場合はデフォルト値が維持される', () => {
+      const { result } = renderHook(() => useScriptAutoSender(mockOnScriptSend, false));
+
+      const sequenceData = {
+        scripts: testScripts,
+      };
+
+      act(() => {
+        result.current.loadSequenceFromData(sequenceData);
+      });
+
+      expect(result.current.sequence?.scripts).toHaveLength(3);
+      expect(result.current.interval).toBe(5); // DEFAULT_SEND_INTERVAL
+    });
+
+    it('読み込み後はcurrentIndexが0にリセットされる', async () => {
+      const { result } = renderHook(() => useScriptAutoSender(mockOnScriptSend, false));
+
+      // まずloadSequenceで読み込んで開始
+      const file = createMockFile({ scripts: testScripts, defaultInterval: 0 });
+      await act(async () => {
+        await result.current.loadSequence(file);
+      });
+
+      act(() => {
+        result.current.start();
+      });
+
+      // currentIndexを進める
+      await act(async () => {
+        await vi.runOnlyPendingTimersAsync();
+      });
+
+      act(() => {
+        result.current.pause();
+      });
+
+      expect(result.current.currentIndex).toBeGreaterThan(0);
+
+      // loadSequenceFromDataで新しいシーケンスを読み込むとリセットされる
+      act(() => {
+        result.current.loadSequenceFromData({ scripts: testScripts });
+      });
+
+      expect(result.current.currentIndex).toBe(0);
+      expect(result.current.status).toBe('idle');
+    });
+
+    it('loadSequenceFromDataで読み込んだシーケンスを開始できる', async () => {
+      const { result } = renderHook(() => useScriptAutoSender(mockOnScriptSend, false));
+
+      act(() => {
+        result.current.loadSequenceFromData({
+          scripts: testScripts,
+          defaultInterval: 0,
+        });
+      });
+
+      act(() => {
+        result.current.start();
+      });
+
+      expect(result.current.status).toBe('running');
+
+      await act(async () => {
+        await vi.runOnlyPendingTimersAsync();
+      });
+
+      expect(mockOnScriptSend).toHaveBeenCalledWith(testScripts[0]);
+    });
+  });
+
   describe('loadSequence - シーケンスファイル読み込み', () => {
     it('正常なJSONファイルを読み込める', async () => {
       const { result } = renderHook(() => useScriptAutoSender(mockOnScriptSend, false));

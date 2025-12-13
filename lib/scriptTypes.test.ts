@@ -3,6 +3,8 @@ import {
   parseScriptSequence,
   DEFAULT_SEND_INTERVAL,
   ScriptSequence,
+  PresetSequenceInfo,
+  extractPresetInfo,
 } from './scriptTypes';
 
 describe('parseScriptSequence', () => {
@@ -281,5 +283,79 @@ describe('parseScriptSequence', () => {
 describe('DEFAULT_SEND_INTERVAL', () => {
   it('デフォルト送信間隔は5秒', () => {
     expect(DEFAULT_SEND_INTERVAL).toBe(5);
+  });
+});
+
+// プリセットメタ情報のテスト
+describe('extractPresetInfo', () => {
+  describe('正常系', () => {
+    it('シーケンス名付きのファイルからメタ情報を抽出できる', () => {
+      const fileName = 'test-sequence.json';
+      const sequence: ScriptSequence = {
+        name: '配信オープニング',
+        scripts: [
+          { id: 'test-1', label: 'テスト', text: 'テストメッセージ' },
+          { id: 'test-2', label: 'テスト2', text: 'テストメッセージ2' },
+        ],
+        defaultInterval: 5,
+      };
+
+      const result = extractPresetInfo(fileName, sequence);
+
+      expect(result.id).toBe('test-sequence');
+      expect(result.name).toBe('配信オープニング');
+      expect(result.fileName).toBe('test-sequence.json');
+      expect(result.scriptCount).toBe(2);
+    });
+
+    it('シーケンス名がない場合はファイル名をnameとして使用する', () => {
+      const fileName = 'my-preset.json';
+      const sequence: ScriptSequence = {
+        scripts: [
+          { id: 'test-1', label: 'テスト', text: 'テストメッセージ' },
+        ],
+      };
+
+      const result = extractPresetInfo(fileName, sequence);
+
+      expect(result.id).toBe('my-preset');
+      expect(result.name).toBe('my-preset');
+      expect(result.fileName).toBe('my-preset.json');
+      expect(result.scriptCount).toBe(1);
+    });
+
+    it('台本件数を正しくカウントする', () => {
+      const fileName = 'long-sequence.json';
+      const sequence: ScriptSequence = {
+        name: '長いシーケンス',
+        scripts: [
+          { id: '1', label: '1', text: '1' },
+          { id: '2', label: '2', text: '2' },
+          { id: '3', label: '3', text: '3' },
+          { id: '4', label: '4', text: '4' },
+          { id: '5', label: '5', text: '5' },
+        ],
+      };
+
+      const result = extractPresetInfo(fileName, sequence);
+
+      expect(result.scriptCount).toBe(5);
+    });
+  });
+
+  describe('PresetSequenceInfo型', () => {
+    it('必要なプロパティを全て持つ', () => {
+      const info: PresetSequenceInfo = {
+        id: 'test-id',
+        name: 'テスト名',
+        fileName: 'test.json',
+        scriptCount: 10,
+      };
+
+      expect(info.id).toBeDefined();
+      expect(info.name).toBeDefined();
+      expect(info.fileName).toBeDefined();
+      expect(info.scriptCount).toBeDefined();
+    });
   });
 });
